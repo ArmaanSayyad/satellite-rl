@@ -157,6 +157,26 @@ phase depends on "trust me, it'll come together later."
   work below, where the environment is being modified anyway.
 - **Deliverable**: full v1 environment, still validated with a random/
   scripted policy before any learning is attempted.
+- **Stage 2 done (Phase 5c, see `19-curriculum-stage-2.md`)**:
+  `CollisionAvoidanceEnv(sample_geometry=True)` samples a fresh real
+  event's geometry from the Phase 2 bootstrap table every reset, solving
+  via the Phase 5a/5b-hardened targeting pipeline. Two real
+  implementation problems surfaced and fixed: bsk_rl evaluates `rN`/`vN`
+  sat_args callables independently, needing an explicit generation-
+  counter coupling to keep them jointly consistent
+  (`env/scenario_sampling.py`); and the Pc observation's sigma/
+  combined_radius had to move from Phase 4's class-level closure
+  constants to mutable per-episode satellite state (an ordering bug —
+  setting them after `super().reset()` instead of before — was caught
+  before shipping, since `reset()` itself triggers the first
+  observation). `env_checker` passes in both modes; `refine_tca()` still
+  not wired in (unchanged from Phase 5b — deferred further, not needed
+  for stage 2 itself). A deliberate Gym-convention deviation documented:
+  `reset(seed=X)` is not reset-to-reset reproducible in sampling mode by
+  design (the sampling RNG advances across resets, which is what
+  curriculum training wants) — `targeting_seed` governs the reproducible
+  sequence instead. 10/10 env tests passing (4 new).
+- **Stage 3 (CDM-sequence uncertainty evolution) — not yet started.**
 
 ## Phase 6 — Training
 - SB3 PPO, starting hyperparameters per `10-rl-algorithm.md`, tuned based
