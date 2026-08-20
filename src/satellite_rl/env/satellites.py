@@ -39,30 +39,30 @@ class SecondarySatellite(sats.Satellite):
 
 
 def make_ego_satellite_class(
-    sigma: float,
-    combined_radius: float,
     max_dv: float = 10.0,
     dv_available_init: float = 100.0,
     secondary_name: str = SECONDARY_NAME,
     ego_name: str = EGO_NAME,
 ) -> type:
-    """Build an EgoSatellite subclass configured for one fixed scenario.
+    """Build an EgoSatellite subclass configured with the given secondary/
+    ego names and action bounds.
 
     `observation_spec`/`action_spec` are bsk_rl ClassVars (class-level,
-    not instance-level) -- see docs/17 -- so per-scenario parameters (the
-    secondary's name, the fixed covariance/HBR used for the Pc
-    observation) must be baked in at class-definition time via this
-    factory rather than passed to `__init__`.
+    not instance-level) -- see docs/17 -- so the secondary's name must be
+    baked in at class-definition time via this factory rather than passed
+    to `__init__`. Unlike Phase 4, the Pc observation's sigma/combined_
+    radius are NOT baked in here -- they're read from the live satellite's
+    `_pc_sigma`/`_pc_combined_radius` attributes at observation time (set
+    by the env wrapper each reset), since curriculum stage 2
+    (docs/19-curriculum-stage-2.md) samples a fresh scenario -- with its
+    own sigma/combined_radius -- every episode.
 
     Args:
-        sigma: fixed isotropic position-uncertainty std dev for the Pc
-            observation, meters (see observations.make_collision_pc_fn).
-        combined_radius: fixed combined hard-body radius, meters.
         max_dv: maximum Δv magnitude per maneuver, m/s.
         secondary_name, ego_name: must match the names used when
             instantiating the two satellites.
     """
-    pc_fn = make_collision_pc_fn(secondary_name, sigma, combined_radius)
+    pc_fn = make_collision_pc_fn(secondary_name)
 
     def _time_to_tca(satellite) -> float:
         return getattr(satellite, "_time_to_tca_s", 0.0)

@@ -92,3 +92,60 @@ def test_invalid_schedule_rejected():
         CollisionAvoidanceEnv(schedule_days_before_tca=(1.0, 2.0, 0.0))  # not descending
     with pytest.raises(ValueError):
         CollisionAvoidanceEnv(schedule_days_before_tca=(2.0, 1.0, 0.5))  # doesn't end at 0.0
+
+
+# Curriculum stage 2 (docs/19-curriculum-stage-2.md): sampled geometry.
+SAMPLING_ENV_KWARGS = {
+    "sample_geometry": True,
+    "sim_rate": 5.0,
+    "schedule_days_before_tca": (0.2, 0.1, 0.05, 0.01, 0.0),
+    "targeting_seed": 0,
+}
+
+
+def test_sampling_env_checker_compliance():
+    from gymnasium.utils.env_checker import check_env
+
+    env = CollisionAvoidanceEnv(**SAMPLING_ENV_KWARGS)
+    check_env(env, skip_render_check=True)
+
+
+def test_sampling_env_draws_different_scenarios_across_resets():
+    """Each reset must sample a genuinely different real event -- the
+    whole point of curriculum stage 2 versus stage 1's fixed scenario.
+    """
+    env = CollisionAvoidanceEnv(**SAMPLING_ENV_KWARGS)
+    samples = []
+    for _ in range(5):
+        env.reset()
+        samples.append(env._sampler.current_sample["miss_distance"])
+    assert len(set(samples)) > 1
+
+
+def test_sampling_env_runs_full_episodes():
+    env = CollisionAvoidanceEnv(**SAMPLING_ENV_KWARGS)
+    for _ in range(3):
+        env.reset()
+        terminated = truncated = False
+        n_steps = 0
+        info = {}
+        while not (terminated or truncated):
+            _obs, _reward, terminated, truncated, info = env.step(np.zeros(3, dtype=np.float32))
+            n_steps += 1
+        assert n_steps == len(SAMPLING_ENV_KWARGS["schedule_days_before_tca"]) - 1
+        assert terminated
+        assert 0.0 <= info["pc_final"] <= 1.0
+
+
+def test_sampling_env_pc_sigma_and_radius_vary_with_sample():
+    """The Pc observation's sigma/combined_radius must actually track the
+    sampled event, not silently stay at some stale/default value --
+    directly exercises the fix in observations.make_collision_pc_fn that
+    made these mutable per-episode state instead of a baked-in constant.
+    """
+    env = CollisionAvoidanceEnv(**SAMPLING_ENV_KWARGS)
+    seen_sigmas = set()
+    for _ in range(5):
+        env.reset()
+        seen_sigmas.add(env.satellites[0]._pc_sigma)
+    assert len(seen_sigmas) > 1
