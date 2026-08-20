@@ -223,12 +223,42 @@ phase depends on "trust me, it'll come together later."
   local/gitignored per existing `runs/` pattern) + training curve
   (`runs/ppo_stage2_run1_monitor.png`) + real results write-up (`21`).
 
-## Phase 7 — Evaluation
-- All four baselines (`11-evaluation.md`), full metric suite, held-out
-  Kelvins-event replay validation.
-- **Deliverable**: results write-up — including an honest report if PPO
-  doesn't beat the threshold heuristic, per `11`'s "honest negative
-  results" section.
+## Phase 7 — Evaluation — DONE
+- Implemented baselines 3/4 (threshold heuristic, hindsight oracle --
+  `training/baselines.py`) and the full metric suite (Pc tail
+  percentiles, fuel, maneuver count, regret vs. oracle, timing) --
+  `training/full_evaluation.py`.
+- **Central finding, more consequential than "does PPO beat the
+  heuristic"**: on a 60-episode held-out set (and confirmed on a 300-
+  episode sweep, and on the training seed itself, n=150), **zero
+  episodes have native (never-maneuver) Pc above `pc_threshold`** --
+  curriculum stage 2/3's isotropic-covariance simplification (`sigma_m`
+  as a single geometric-mean value, per `06-state-space.md`) plus
+  discarding each real event's actual miss-vector/covariance alignment
+  when building `geometry_events.csv` (`pc/geometry.py`'s `x0`/`z0` are
+  computed and then dropped, `scenario/distributions.py`) means the
+  scenario generator **cannot currently produce a genuinely high-risk
+  episode from real data**. Verified directly: recomputing Pc from the
+  real geometry table with actual (non-isotropic) sigma pairs and
+  worst-case alignment shifts the >threshold rate from 0% to 3.2% on the
+  same rows -- the simplification, not just real-world data sparsity, is
+  doing real suppression. This reframes Phase 6's result: the trained
+  policy likely didn't fail to learn risk-gating from too little
+  training so much as it was never shown a risky training episode to
+  learn from. Full investigation and numbers in `22-evaluation-results.
+  md`.
+- Threshold heuristic and hindsight oracle are implemented correctly and
+  verified to behave as designed (11 passing tests,
+  `tests/test_baselines.py`) but are untested on the interesting
+  (high-risk) regime as a direct consequence of the finding above.
+- **Deliverable**: `training/baselines.py`, `training/full_evaluation.py`,
+  full results write-up (`22`) -- including the honest report that this
+  evaluation, as currently scoped, can't yet answer "does PPO beat the
+  threshold heuristic" at all, because the two are indistinguishable on
+  every available real high-risk-free scenario. A concrete next step
+  (preserve real anisotropic covariance + miss-vector alignment in the
+  scenario generator) is identified but explicitly not started this
+  phase.
 
 ## Phase 8 — Open-source polish
 - README, install instructions, worked example notebook, CI green,
