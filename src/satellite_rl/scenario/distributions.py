@@ -80,6 +80,19 @@ def _add_encounter_geometry(df):
     """Row-wise: project each event onto the encounter plane, derive
     combined radius from RCS. Drops rows that fail (missing RCS, singular
     covariance) and returns (augmented_df, n_dropped).
+
+    Also records `alignment_angle_rad = atan2(z0, x0)` -- the real miss
+    vector's angle within the event's own principal-axis (tight-x/loose-z)
+    frame, per `pc/geometry.py`'s `EncounterGeometry2D`. This was dropped
+    entirely before Phase 7b (see docs/22-evaluation-results.md and
+    docs/23-anisotropic-covariance-fix.md): downstream sampling used only
+    the scalar miss_distance and an independently-fixed isotropic sigma,
+    re-randomizing where the miss vector fell relative to the (also
+    collapsed-to-isotropic) covariance ellipse every episode -- discarding
+    exactly the information that determines whether a given real
+    miss-distance/covariance pair is actually risky. Keeping this angle
+    lets the sampler reproduce a specific real event's own risk-relevant
+    geometry (miss vector vs. covariance shape) instead of a random one.
     """
     rows = []
     n_dropped = 0
@@ -99,6 +112,7 @@ def _add_encounter_geometry(df):
                     "sigma_x": geometry.sigma_x,
                     "sigma_z": geometry.sigma_z,
                     "combined_radius": radius,
+                    "alignment_angle_rad": float(np.arctan2(geometry.z0, geometry.x0)),
                 }
             )
         except Exception:  # noqa: BLE001 -- counting failures, not debugging one
@@ -241,6 +255,7 @@ def sample_scenario_geometry_bootstrap(geometry_df: pd.DataFrame, rng: np.random
         "sigma_x": float(row["sigma_x"]),
         "sigma_z": float(row["sigma_z"]),
         "combined_radius": float(row["combined_radius"]),
+        "alignment_angle_rad": float(row["alignment_angle_rad"]),
     }
 
 

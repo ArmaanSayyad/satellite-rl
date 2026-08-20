@@ -125,8 +125,21 @@ class SecondaryScenarioSampler:
             "sigma_x": float(row["sigma_x"]),
             "sigma_z": float(row["sigma_z"]),
             "combined_radius": float(row["combined_radius"]),
+            "alignment_angle_rad": float(row["alignment_angle_rad"]),
         }
-        orientation_angle_rad = self.rng.uniform(0, 2 * np.pi)
+        # The real event's own miss-vector-vs-covariance alignment, not a
+        # fresh uniform-random draw -- see docs/23-anisotropic-covariance-
+        # fix.md. `solve_secondary_initial_state`'s `orientation_angle_rad`
+        # places the miss vector within `encounter_plane_basis(v_rel)`,
+        # the SAME basis convention `project_to_encounter_plane` used to
+        # compute this angle in the first place (both live in
+        # pc/geometry.py), so reusing it here reproduces this specific
+        # real event's actual relationship between its miss vector and its
+        # (tight sigma_x, loose sigma_z) covariance axes -- not the exact
+        # 3D orientation (that was never physically meaningful to preserve,
+        # since v_rel's direction here is independently sampled below),
+        # just the relative geometry that actually determines Pc.
+        orientation_angle_rad = sample["alignment_angle_rad"]
         scenario = solve_secondary_initial_state_robust(
             self.ego_r0,
             self.ego_v0,
@@ -174,38 +187,51 @@ class SecondaryScenarioSampler:
         return list(self._cached_schedule_s)
 
     @property
-    def current_sigma(self) -> float:
-        """Isotropic Pc-observation sigma for the current scenario at
-        TCA (i.e. the "final"/constant value): the geometric mean of the
-        real event's sigma_x/sigma_z. For a constant-uncertainty episode
-        (stage 2, or stage 3 without querying sigma_at_fraction), this is
-        the value used throughout.
+    def current_sigma_xz(self) -> tuple[float, float]:
+        """(sigma_x, sigma_z) -- the real event's own encounter-plane
+        principal std devs (tight axis, loose axis), for the current
+        scenario at TCA. For a constant-uncertainty episode (stage 2, or
+        stage 3 without querying sigma_xz_at_fraction), this is the pair
+        used throughout.
+
+        Replaces the pre-Phase-7b isotropic `current_sigma` (geometric
+        mean) -- see docs/23-anisotropic-covariance-fix.md: collapsing to
+        one isotropic value discarded the real covariance ellipse's
+        eccentricity (median ~5.8x, per docs/22-evaluation-results.md),
+        which materially suppressed computed Pc relative to the real
+        anisotropic geometry.
         """
         self._ensure_current()
-        return float(np.sqrt(self._cached_sample["sigma_x"] * self._cached_sample["sigma_z"]))
+        return float(self._cached_sample["sigma_x"]), float(self._cached_sample["sigma_z"])
 
-    def sigma_at_fraction(self, fraction: float) -> float:
-        """Interpolated isotropic sigma at `fraction` of the way from
+    def sigma_xz_at_fraction(self, fraction: float) -> tuple[float, float]:
+        """Interpolated (sigma_x, sigma_z) at `fraction` of the way from
         episode start (0.0) to TCA (1.0), via geometric (log-linear)
         interpolation between the sampled event's real first/last
-        combined-sigma magnitude -- covariance shrinks multiplicatively
-        (median ~8.36x per docs/15), not additively, so linear
-        interpolation in sigma itself would be the wrong shape. Falls
-        back to the constant `current_sigma` if no evolution data was
-        provided (stage 2).
+        per-axis sigma -- covariance shrinks multiplicatively (median
+        ~8.36x per docs/15), not additively, so linear interpolation
+        would be the wrong shape. Each axis is interpolated independently
+        (not collapsed to a magnitude first) so the eccentricity is
+        preserved throughout the episode, not just at its endpoints.
+        Falls back to the constant `current_sigma_xz` if no evolution
+        data was provided (stage 2).
         """
         self._ensure_current()
         if self._cached_evolution is None:
-            return self.current_sigma
+            return self.current_sigma_xz
         fraction = float(np.clip(fraction, 0.0, 1.0))
-        mag_first = np.sqrt(
-            self._cached_evolution["sigma_x_first"] * self._cached_evolution["sigma_z_first"]
+
+        def _interp(first: float, last: float) -> float:
+            log_val = np.log(first) + fraction * (np.log(last) - np.log(first))
+            return float(np.exp(log_val))
+
+        sigma_x = _interp(
+            self._cached_evolution["sigma_x_first"], self._cached_evolution["sigma_x_last"]
         )
-        mag_last = np.sqrt(
-            self._cached_evolution["sigma_x_last"] * self._cached_evolution["sigma_z_last"]
+        sigma_z = _interp(
+            self._cached_evolution["sigma_z_first"], self._cached_evolution["sigma_z_last"]
         )
-        log_sigma = np.log(mag_first) + fraction * (np.log(mag_last) - np.log(mag_first))
-        return float(np.exp(log_sigma))
+        return sigma_x, sigma_z
 
     @property
     def current_combined_radius(self) -> float:

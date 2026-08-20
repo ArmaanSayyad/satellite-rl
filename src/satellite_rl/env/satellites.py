@@ -52,10 +52,10 @@ def make_ego_satellite_class(
     baked in at class-definition time via this factory rather than passed
     to `__init__`. Unlike Phase 4, the Pc observation's sigma/combined_
     radius are NOT baked in here -- they're read from the live satellite's
-    `_pc_sigma`/`_pc_combined_radius` attributes at observation time (set
-    by the env wrapper each reset), since curriculum stage 2
-    (docs/19-curriculum-stage-2.md) samples a fresh scenario -- with its
-    own sigma/combined_radius -- every episode.
+    `_pc_sigma_x`/`_pc_sigma_z`/`_pc_combined_radius` attributes at
+    observation time (set by the env wrapper each reset), since curriculum
+    stage 2 (docs/19-curriculum-stage-2.md) samples a fresh scenario --
+    with its own sigma/combined_radius -- every episode.
 
     Args:
         max_dv: maximum Δv magnitude per maneuver, m/s.
