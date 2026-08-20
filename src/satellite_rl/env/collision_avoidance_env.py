@@ -76,6 +76,8 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
         disruption_weight: float = 0.05,
         pc_threshold: float = 1e-4,
         targeting_seed: int = 0,
+        high_risk_fraction: float = 0.0,
+        high_risk_pool_fraction: float = 0.05,
         **kwargs,
     ) -> None:
         """
@@ -123,6 +125,17 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
                 velocity-direction sampling (see scenario/targeting.py),
                 and, when `sample_geometry=True`, also for which real
                 event/schedule/covariance pair gets sampled each reset.
+            high_risk_fraction, high_risk_pool_fraction: only used when
+                `sample_geometry=True`. Probability of drawing the
+                geometry row from the elevated-risk pool (top
+                `high_risk_pool_fraction` of real events by `native_pc`)
+                instead of uniformly from the full real table. Default
+                0.0 -- unmodified real-distribution sampling. See
+                docs/24-risk-stratified-sampling.md: real actionable-risk
+                events are ~1-in-8,672 (docs/23), so uniform sampling
+                essentially never exposes training to one; this is a
+                deliberate, explicit, tunable departure from the
+                unmodified distribution, not a silent one.
             **kwargs: passed to GeneralSatelliteTasking (e.g. sim_rate).
         """
         if evolve_uncertainty and not sample_geometry:
@@ -174,10 +187,18 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
                     rng,
                     schedule_library=schedule_library,
                     evolution_df=evolution_df,
+                    high_risk_fraction=high_risk_fraction,
+                    high_risk_pool_fraction=high_risk_pool_fraction,
                 )
             else:
                 self._sampler = SecondaryScenarioSampler(
-                    geometry_df, ego_r0, ego_v0, rng, nominal_tca_s=schedule_s[0]
+                    geometry_df,
+                    ego_r0,
+                    ego_v0,
+                    rng,
+                    nominal_tca_s=schedule_s[0],
+                    high_risk_fraction=high_risk_fraction,
+                    high_risk_pool_fraction=high_risk_pool_fraction,
                 )
             self._fixed_sigma_m = None
             self._fixed_combined_radius_m = None

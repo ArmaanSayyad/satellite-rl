@@ -78,6 +78,8 @@ class SecondaryScenarioSampler:
         nominal_tca_s: float | None = None,
         schedule_library: list | None = None,
         evolution_df: pd.DataFrame | None = None,
+        high_risk_fraction: float = 0.0,
+        high_risk_pool_fraction: float = 0.05,
     ) -> None:
         """
         Args:
@@ -88,11 +90,31 @@ class SecondaryScenarioSampler:
                 both required together) -- if provided, a fresh schedule
                 and covariance pair are sampled each generation instead
                 of using `nominal_tca_s`/a constant sigma.
+            high_risk_fraction: probability, per episode, of drawing the
+                geometry row from the elevated-risk pool (top
+                `high_risk_pool_fraction` of `geometry_df` by `native_pc`)
+                instead of uniformly from the full real table. Default
+                0.0 -- unmodified uniform-real-distribution sampling, the
+                pre-Phase-7c behavior. See docs/24-risk-stratified-
+                sampling.md: real actionable-risk events are ~1-in-8,672
+                (docs/23-anisotropic-covariance-fix.md), so uniform
+                sampling essentially never exposes training to one in any
+                practical timestep budget. This is a deliberate,
+                explicit, tunable departure from the unmodified real
+                distribution -- the elevated pool is still 100% real
+                events, just resampled with a different (documented, not
+                silent) weighting.
+            high_risk_pool_fraction: size of the elevated-risk pool, as a
+                fraction of `geometry_df`'s rows (ranked by `native_pc`,
+                not a value threshold -- avoids ties when most rows sit
+                at Pc=0). Only used when `high_risk_fraction > 0`.
         """
         if (schedule_library is None) != (evolution_df is None):
             raise ValueError("schedule_library and evolution_df must be provided together")
         if schedule_library is None and nominal_tca_s is None:
             raise ValueError("nominal_tca_s is required when schedule_library is not provided")
+        if not 0.0 <= high_risk_fraction <= 1.0:
+            raise ValueError("high_risk_fraction must be in [0, 1]")
         self.geometry_df = geometry_df
         self.ego_r0 = ego_r0
         self.ego_v0 = ego_v0
@@ -101,6 +123,11 @@ class SecondaryScenarioSampler:
         self.evolution_df = evolution_df
         self.rng = rng
         self.generation = 0
+        self.high_risk_fraction = high_risk_fraction
+        self.high_risk_df = None
+        if high_risk_fraction > 0.0:
+            n_top = max(1, int(len(geometry_df) * high_risk_pool_fraction))
+            self.high_risk_df = geometry_df.nlargest(n_top, "native_pc").reset_index(drop=True)
         self._cached_generation: int | None = None
         self._cached_scenario: TargetedScenario | None = None
         self._cached_sample: dict | None = None
@@ -118,7 +145,15 @@ class SecondaryScenarioSampler:
             schedule_s = [self.nominal_tca_s, 0.0] if self.nominal_tca_s != 0.0 else [0.0]
         nominal_tca_s = schedule_s[0]
 
-        row = self.geometry_df.iloc[self.rng.integers(0, len(self.geometry_df))]
+        # Elevated-risk stratified draw (docs/24-risk-stratified-
+        # sampling.md): with probability high_risk_fraction, draw from
+        # the precomputed top-native_pc pool instead of the full table.
+        # Independent per-episode coin flip (not tied to the schedule/
+        # evolution draws above), so it composes cleanly with stage 3's
+        # separately-sampled schedule/evolution pair.
+        drawing_high_risk = self.high_risk_df is not None and self.rng.random() < self.high_risk_fraction
+        pool = self.high_risk_df if drawing_high_risk else self.geometry_df
+        row = pool.iloc[self.rng.integers(0, len(pool))]
         sample = {
             "miss_distance": float(row["miss_distance"]),
             "relative_speed": float(row["relative_speed"]),
@@ -126,6 +161,8 @@ class SecondaryScenarioSampler:
             "sigma_z": float(row["sigma_z"]),
             "combined_radius": float(row["combined_radius"]),
             "alignment_angle_rad": float(row["alignment_angle_rad"]),
+            "native_pc": float(row["native_pc"]),
+            "drawn_from_high_risk_pool": drawing_high_risk,
         }
         # The real event's own miss-vector-vs-covariance alignment, not a
         # fresh uniform-random draw -- see docs/23-anisotropic-covariance-

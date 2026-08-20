@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from ..pc import compute_pc
 from ..pc.geometry import project_to_encounter_plane
 from .kelvins_loader import (
     DEFAULT_TRAIN_CSV,
@@ -93,6 +94,13 @@ def _add_encounter_geometry(df):
     miss-distance/covariance pair is actually risky. Keeping this angle
     lets the sampler reproduce a specific real event's own risk-relevant
     geometry (miss vector vs. covariance shape) instead of a random one.
+
+    Also records `native_pc` -- Pc computed directly from this row's own
+    (x0, z0, sigma_x, sigma_z, combined_radius), i.e. what this specific
+    real event's risk actually is, standalone. Added in Phase 7c (see
+    docs/24-risk-stratified-sampling.md) so downstream sampling can
+    stratify by real risk level without recomputing Pc from scratch every
+    time a row is drawn.
     """
     rows = []
     n_dropped = 0
@@ -104,6 +112,10 @@ def _add_encounter_geometry(df):
             )
             geometry = project_to_encounter_plane(r_rel, v_rel, cov_combined)
             radius = combined_radius_from_rcs(row)
+            native_r_rel = np.array([geometry.x0, geometry.z0, 0.0])
+            native_v_rel = np.array([0.0, 0.0, 1.0])  # arbitrary, orthogonal to the encounter plane
+            native_cov = np.diag([geometry.sigma_x**2, geometry.sigma_z**2, 1e-12])
+            native_pc = compute_pc(native_r_rel, native_v_rel, native_cov, radius, method="chan")
             rows.append(
                 {
                     "event_id": row["event_id"],
@@ -113,6 +125,7 @@ def _add_encounter_geometry(df):
                     "sigma_z": geometry.sigma_z,
                     "combined_radius": radius,
                     "alignment_angle_rad": float(np.arctan2(geometry.z0, geometry.x0)),
+                    "native_pc": float(native_pc),
                 }
             )
         except Exception:  # noqa: BLE001 -- counting failures, not debugging one
@@ -256,6 +269,7 @@ def sample_scenario_geometry_bootstrap(geometry_df: pd.DataFrame, rng: np.random
         "sigma_z": float(row["sigma_z"]),
         "combined_radius": float(row["combined_radius"]),
         "alignment_angle_rad": float(row["alignment_angle_rad"]),
+        "native_pc": float(row["native_pc"]),
     }
 
 
