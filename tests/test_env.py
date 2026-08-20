@@ -147,7 +147,7 @@ def test_sampling_env_pc_sigma_and_radius_vary_with_sample():
     seen_sigmas = set()
     for _ in range(5):
         env.reset()
-        seen_sigmas.add(env.satellites[0]._pc_sigma)
+        seen_sigmas.add((env.satellites[0]._pc_sigma_x, env.satellites[0]._pc_sigma_z))
     assert len(seen_sigmas) > 1
 
 
@@ -215,14 +215,15 @@ def test_evolving_env_sigma_shrinks_toward_tca():
     shrink_ratios = []
     for _ in range(10):
         env.reset()
-        initial_sigma = env.satellites[0]._pc_sigma
+        sat = env.satellites[0]
+        initial_mag = np.sqrt(sat._pc_sigma_x * sat._pc_sigma_z)
         terminated = truncated = False
         while not (terminated or truncated):
             _obs, _reward, terminated, truncated, _info = env.step(
                 np.zeros(3, dtype=np.float32)
             )
-        final_sigma = env.satellites[0]._pc_sigma
-        shrink_ratios.append(initial_sigma / final_sigma)
+        final_mag = np.sqrt(sat._pc_sigma_x * sat._pc_sigma_z)
+        shrink_ratios.append(initial_mag / final_mag)
     assert np.median(shrink_ratios) > 1.0
 
 

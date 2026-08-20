@@ -263,19 +263,29 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
             self._sampler.generation += 1
             # Triggers this episode's sample+solve now (idempotent per
             # generation -- see scenario_sampling.py) so schedule_s and
-            # _pc_sigma/_pc_combined_radius are set BEFORE super().reset(),
-            # which calls _get_obs() (needing them already set) and
-            # re-evaluates the time_limit callable (needing self.schedule_s
-            # already updated) at its own end/start, before this method
-            # gets control back. rN()/vN(), called inside super().reset()
-            # via bsk_rl's sat_args callables, then just reuse the same
-            # cached scenario.
+            # _pc_sigma_x/_pc_sigma_z/_pc_combined_radius are set BEFORE
+            # super().reset(), which calls _get_obs() (needing them
+            # already set) and re-evaluates the time_limit callable
+            # (needing self.schedule_s already updated) at its own
+            # end/start, before this method gets control back. rN()/vN(),
+            # called inside super().reset() via bsk_rl's sat_args
+            # callables, then just reuse the same cached scenario.
             if self.evolve_uncertainty:
                 self.schedule_s = self._sampler.current_schedule_s
-            self.satellites[0]._pc_sigma = self._sampler.sigma_at_fraction(0.0)
+            sigma_x, sigma_z = self._sampler.sigma_xz_at_fraction(0.0)
+            self.satellites[0]._pc_sigma_x = sigma_x
+            self.satellites[0]._pc_sigma_z = sigma_z
             self.satellites[0]._pc_combined_radius = self._sampler.current_combined_radius
         else:
-            self.satellites[0]._pc_sigma = self._fixed_sigma_m
+            # Fixed-scenario mode (curriculum stage 1) has no real-event
+            # anisotropy to preserve -- sigma_m is a single deliberately
+            # simple isotropic value, per docs/03-scenario-design.md.
+            # Setting both axes equal makes observations.py's anisotropic
+            # covariance construction reduce to the isotropic case exactly
+            # (diag(s, s) embedded via an orthonormal basis is s*I), so no
+            # separate code path is needed there for this mode.
+            self.satellites[0]._pc_sigma_x = self._fixed_sigma_m
+            self.satellites[0]._pc_sigma_z = self._fixed_sigma_m
             self.satellites[0]._pc_combined_radius = self._fixed_combined_radius_m
         # self.satellites persists across resets (only .dynamics/.fsw get
         # rebuilt) -- see docs/17-env-implementation-notes.md.
@@ -298,7 +308,9 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
         if self.evolve_uncertainty:
             total_span = self.schedule_s[0]
             fraction = 1.0 if total_span == 0.0 else 1.0 - self.schedule_s[next_idx] / total_span
-            self.satellites[0]._pc_sigma = self._sampler.sigma_at_fraction(fraction)
+            sigma_x, sigma_z = self._sampler.sigma_xz_at_fraction(fraction)
+            self.satellites[0]._pc_sigma_x = sigma_x
+            self.satellites[0]._pc_sigma_z = sigma_z
 
         tuple_obs, base_reward, terminated, truncated, info = super().step(
             [full_ego_action, 0]

@@ -260,6 +260,45 @@ phase depends on "trust me, it'll come together later."
   scenario generator) is identified but explicitly not started this
   phase.
 
+## Phase 7b — Anisotropic covariance fix — DONE
+- Implemented the fix recommended at the end of Phase 7: preserve each
+  real event's actual miss-vector/covariance alignment
+  (`alignment_angle_rad`, computed but previously discarded by
+  `pc/geometry.py`'s `project_to_encounter_plane`) through
+  `geometry_events.csv`, and use it as `orientation_angle_rad` in the
+  targeting solve instead of a fresh uniform-random draw per episode.
+  Replaced the isotropic (geometric-mean) `_pc_sigma` with anisotropic
+  `_pc_sigma_x`/`_pc_sigma_z`, embedded via `encounter_plane_basis(v_rel)`
+  at Pc-evaluation time. `data/fitted/geometry_events.csv` regenerated
+  (8,672 events, 0 dropped, one new column). 11 tests updated, 102 passed.
+- **Result, reported honestly**: the fix is real and measured (300-episode
+  held-out sweep: max Pc 4.5e-9 → 2.2e-7, ~50x higher; fraction >1e-8
+  0% → 5.3%) but **does not by itself produce `Pc > 1e-4` training
+  episodes**. Ground truth computed directly from the full real table
+  (all 8,672 events, true alignment, no simulation needed): only **1
+  event (0.012%) has Pc > 1e-4**. At that real base rate, uniform
+  bootstrap sampling has an expected count of `n/8672` high-risk draws in
+  `n` episodes — ~0.007 for Phase 7's 60-episode eval set, ~0.035 for the
+  300-episode sweep. Seeing zero in either is exactly what the true rate
+  predicts, not a remaining bug. The isotropic simplification was real
+  and worth fixing (it suppressed the achievable ceiling by ~50x, and
+  was physically wrong given median encounter-plane eccentricity ~5.8x),
+  but actionable-risk conjunctions are genuinely this rare in the real
+  dataset — the isotropic bug was never the dominant cause of Phase 7's
+  "0 high-risk episodes" finding, just a compounding one. Full numbers,
+  including two other undocumented `06-state-space.md` design-vs-
+  implementation gaps noticed along the way (no observation noise
+  injected; σx/σz/orientation not exposed as separate observation
+  features), in `23-anisotropic-covariance-fix.md`.
+- **Deliverable**: the fix itself (correctly implemented, tested,
+  verified against ground truth) + a precise, quantified answer to "how
+  rare is real actionable risk in this dataset" (1-in-8,672) + a clearly
+  identified follow-up (stratified/oversampled risk exposure during
+  scenario sampling) that this phase deliberately did not implement, since
+  it's a separate, larger design decision (how much to oversample, risk
+  of distorting the "grounded in the real distribution" claim elsewhere)
+  worth deciding explicitly rather than defaulting into.
+
 ## Phase 8 — Open-source polish
 - README, install instructions, worked example notebook, CI green,
   license file (note: MIT/Apache2 recommended for the code itself; the
