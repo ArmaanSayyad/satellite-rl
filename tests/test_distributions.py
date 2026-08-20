@@ -14,6 +14,7 @@ import pytest
 
 from satellite_rl.scenario.distributions import (
     fit_lognormal,
+    sample_covariance_evolution_bootstrap,
     sample_scenario_geometry,
     sample_scenario_geometry_bootstrap,
 )
@@ -103,3 +104,33 @@ def test_sample_scenario_geometry_bootstrap_returns_a_real_row():
         for s in samples
     }
     assert len(unique_draws) > 1
+
+
+def test_sample_covariance_evolution_bootstrap_returns_a_real_pair():
+    evolution_df = pd.DataFrame(
+        {
+            "event_id": ["a", "b", "c"],
+            "sigma_x_first": [100.0, 200.0, 300.0],
+            "sigma_z_first": [150.0, 250.0, 350.0],
+            "sigma_x_last": [10.0, 20.0, 30.0],
+            "sigma_z_last": [15.0, 25.0, 35.0],
+        }
+    )
+    rng = np.random.default_rng(0)
+    samples = [sample_covariance_evolution_bootstrap(evolution_df, rng) for _ in range(50)]
+
+    real_rows = {
+        (100.0, 150.0, 10.0, 15.0),
+        (200.0, 250.0, 20.0, 25.0),
+        (300.0, 350.0, 30.0, 35.0),
+    }
+    for s in samples:
+        key = (s["sigma_x_first"], s["sigma_z_first"], s["sigma_x_last"], s["sigma_z_last"])
+        assert key in real_rows
+        # A real event's covariance should generally shrink (first > last)
+        # -- not asserted as a hard invariant (docs/03 notes real events
+        # aren't always monotonic), just checked here since this specific
+        # synthetic fixture was constructed to shrink, catching a
+        # first/last column mixup.
+        assert s["sigma_x_first"] > s["sigma_x_last"]
+        assert s["sigma_z_first"] > s["sigma_z_last"]

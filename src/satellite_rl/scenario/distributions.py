@@ -137,7 +137,9 @@ def fit_geometry_distributions(
     return fits, geometry_df
 
 
-def fit_covariance_shrink_ratio(csv_path: Path = DEFAULT_TRAIN_CSV) -> FittedLognormal:
+def fit_covariance_shrink_ratio(
+    csv_path: Path = DEFAULT_TRAIN_CSV,
+) -> tuple[FittedLognormal, pd.DataFrame]:
     """Fit the ratio of (first-CDM combined-sigma magnitude) to
     (last-CDM combined-sigma magnitude) per event -- how much the
     covariance typically shrinks between an event's first and final
@@ -147,6 +149,13 @@ def fit_covariance_shrink_ratio(csv_path: Path = DEFAULT_TRAIN_CSV) -> FittedLog
     "Combined-sigma magnitude" here is geometric mean(sigma_x, sigma_z) in
     the encounter-plane projection, i.e. a single scalar uncertainty-size
     summary -- consistent with what fit_geometry_distributions fits.
+
+    Also returns the underlying per-event (first, last) sigma_x/sigma_z
+    table -- per docs/15-distribution-fitting-results.md and
+    docs/19-curriculum-stage-2.md's established pattern, the marginal
+    lognormal fit on the ratio alone is KS-rejected (see docs/15), so
+    curriculum stage 3 should bootstrap real per-event pairs from this
+    table rather than sample from the fit.
     """
     first_cdms = load_events(csv_path, which="first").dropna(
         subset=["t_rcs_estimate", "c_rcs_estimate"]
@@ -164,14 +173,17 @@ def fit_covariance_shrink_ratio(csv_path: Path = DEFAULT_TRAIN_CSV) -> FittedLog
     # spike at ratio=1.
     cdm_counts = load_events(csv_path, which="all").groupby("event_id").size()
     multi_cdm_events = cdm_counts[cdm_counts > 1].index
-    merged = merged[merged["event_id"].isin(multi_cdm_events)]
+    merged = merged[merged["event_id"].isin(multi_cdm_events)].copy()
 
     mag_first = np.sqrt(merged["sigma_x_first"] * merged["sigma_z_first"])
     mag_last = np.sqrt(merged["sigma_x_last"] * merged["sigma_z_last"])
     ratio = (mag_first / mag_last).to_numpy()
 
     print(f"fit_covariance_shrink_ratio: {len(ratio)} multi-CDM events used.")
-    return fit_lognormal(ratio)
+    evolution_df = merged[
+        ["event_id", "sigma_x_first", "sigma_z_first", "sigma_x_last", "sigma_z_last"]
+    ].reset_index(drop=True)
+    return fit_lognormal(ratio), evolution_df
 
 
 def extract_schedule_library(csv_path: Path = DEFAULT_TRAIN_CSV, max_events: int = 5000) -> list:
@@ -232,10 +244,28 @@ def sample_scenario_geometry_bootstrap(geometry_df: pd.DataFrame, rng: np.random
     }
 
 
+def sample_covariance_evolution_bootstrap(
+    evolution_df: pd.DataFrame, rng: np.random.Generator
+) -> dict:
+    """Draw one real event's (first-CDM, last-CDM) sigma_x/sigma_z pair,
+    for curriculum stage 3's evolving-uncertainty model -- same bootstrap-
+    over-fitted-distribution rationale as
+    `sample_scenario_geometry_bootstrap` (docs/15).
+    """
+    row = evolution_df.iloc[rng.integers(0, len(evolution_df))]
+    return {
+        "sigma_x_first": float(row["sigma_x_first"]),
+        "sigma_z_first": float(row["sigma_z_first"]),
+        "sigma_x_last": float(row["sigma_x_last"]),
+        "sigma_z_last": float(row["sigma_z_last"]),
+    }
+
+
 def save_fitted(
     geometry_fits: dict[str, FittedLognormal],
     geometry_df: pd.DataFrame,
     shrink_ratio_fit: FittedLognormal,
+    evolution_df: pd.DataFrame,
     schedule_library: list,
     out_dir: Path = FITTED_DIR,
 ) -> None:
@@ -245,6 +275,7 @@ def save_fitted(
     geometry_df.to_csv(out_dir / "geometry_events.csv", index=False)
     with open(out_dir / "covariance_shrink_ratio.json", "w") as f:
         json.dump(shrink_ratio_fit.to_dict(), f, indent=2)
+    evolution_df.to_csv(out_dir / "covariance_evolution_events.csv", index=False)
     with open(out_dir / "schedule_library.json", "w") as f:
         json.dump(schedule_library, f)
     print(f"Saved fitted distributions to {out_dir}/")
@@ -260,7 +291,7 @@ def main() -> None:
         )
 
     print("\n=== Fitting covariance shrink ratio ===")
-    shrink_fit = fit_covariance_shrink_ratio()
+    shrink_fit, evolution_df = fit_covariance_shrink_ratio()
     print(
         f"  shrink_ratio: mu={shrink_fit.mu:.3f} sigma={shrink_fit.sigma:.3f} "
         f"n={shrink_fit.n_samples} KS_stat={shrink_fit.ks_statistic:.4f} "
@@ -269,13 +300,14 @@ def main() -> None:
     # median ratio = exp(mu); report directly since it's the most
     # interpretable single number ("covariance typically shrinks by ~Nx").
     print(f"  median shrink ratio: {np.exp(shrink_fit.mu):.2f}x")
+    print(f"  evolution_df: {len(evolution_df)} real (first, last) sigma pairs saved for bootstrap use")
 
     print("\n=== Extracting schedule library ===")
     schedules = extract_schedule_library()
     counts = [len(s) for s in schedules]
     print(f"  CDM count per event: min={min(counts)} median={np.median(counts):.0f} max={max(counts)}")
 
-    save_fitted(geometry_fits, geometry_df, shrink_fit, schedules)
+    save_fitted(geometry_fits, geometry_df, shrink_fit, evolution_df, schedules)
 
 
 if __name__ == "__main__":

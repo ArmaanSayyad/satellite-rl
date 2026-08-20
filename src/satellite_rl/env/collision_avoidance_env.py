@@ -1,16 +1,21 @@
 """The collision-avoidance Gymnasium environment.
 
-Two modes, both curriculum stage 1/2 per docs/03-scenario-design.md and
+Three modes, curriculum stages 1-3 per docs/03-scenario-design.md and
 docs/09-episode-design.md:
 - `sample_geometry=False` (default, Phase 4): a single fixed encounter
-  geometry, constant across all episodes.
-- `sample_geometry=True` (Phase 5, curriculum stage 2, see
-  docs/19-curriculum-stage-2.md): a fresh geometry -- miss distance,
-  relative speed, sigma, combined radius -- sampled from the real
-  Kelvins-derived bootstrap table every reset.
-
-Curriculum stage 3 (CDM-sequence uncertainty evolution) is not yet
-implemented -- covariance is still fixed within an episode either way.
+  geometry and fixed decision-point schedule, constant across all
+  episodes.
+- `sample_geometry=True, evolve_uncertainty=False` (Phase 5c, curriculum
+  stage 2, see docs/19-curriculum-stage-2.md): a fresh geometry -- miss
+  distance, relative speed, sigma, combined radius -- sampled from the
+  real Kelvins-derived bootstrap table every reset, but still on the
+  fixed decision-point schedule and with sigma constant within an episode.
+- `sample_geometry=True, evolve_uncertainty=True` (Phase 5d, curriculum
+  stage 3, see docs/20-curriculum-stage-3.md): additionally samples a
+  real per-event CDM-timing schedule (irregular, variable length) and
+  lets sigma evolve within the episode (geometric interpolation between
+  the sampled event's real first-CDM and last-CDM covariance magnitude)
+  -- the actual v1 target environment per docs/03.
 
 Wraps bsk_rl's GeneralSatelliteTasking (two satellites: ego + a passive
 secondary) following the same thin-subclass pattern bsk_rl's own
@@ -19,6 +24,7 @@ implementation-notes.md) -- exposing only the ego's action/observation
 externally, injecting the secondary's fixed no-op action internally.
 """
 
+import json
 
 import numpy as np
 import pandas as pd
@@ -49,12 +55,13 @@ def _risk_penalty(pc: float, threshold: float) -> float:
 
 class CollisionAvoidanceEnv(GeneralSatelliteTasking):
     """Single ego satellite deciding whether/when to maneuver against a
-    scripted conjunction, per a fixed sequence of decision points.
+    scripted conjunction, per a sequence of decision points.
     """
 
     def __init__(
         self,
         sample_geometry: bool = False,
+        evolve_uncertainty: bool = False,
         miss_distance_m: float = 500.0,
         relative_speed_ms: float = 8000.0,
         orientation_angle_rad: float = 1.0,
@@ -81,6 +88,12 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
                 miss_distance_m/relative_speed_ms/combined_radius_m/
                 sigma_m below. If False (default), those fixed values are
                 used for every episode (curriculum stage 1, Phase 4).
+            evolve_uncertainty: if True (requires `sample_geometry=True`),
+                additionally sample a real per-event CDM-timing schedule
+                (ignoring `schedule_days_before_tca`) and let sigma evolve
+                within the episode via geometric interpolation between the
+                sampled event's real first/last covariance magnitude
+                (curriculum stage 3, docs/20-curriculum-stage-3.md).
             miss_distance_m, relative_speed_ms, orientation_angle_rad:
                 the fixed encounter geometry, used only when
                 `sample_geometry=False`.
@@ -100,16 +113,21 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
                 collision threshold vs. our own uncertainty-aware risk
                 model's assumed object size).
             schedule_days_before_tca: fixed decision-point schedule,
-                descending, must end at 0.0 (TCA).
+                descending, must end at 0.0 (TCA). Ignored when
+                `evolve_uncertainty=True` (a real schedule is sampled
+                instead).
             max_dv_ms: per-maneuver Δv bound.
             risk_weight, fuel_weight, disruption_weight, pc_threshold:
                 reward weights, see docs/08-reward-function.md.
             targeting_seed: seed for the targeting solver's relative-
                 velocity-direction sampling (see scenario/targeting.py),
                 and, when `sample_geometry=True`, also for which real
-                event gets sampled each reset.
+                event/schedule/covariance pair gets sampled each reset.
             **kwargs: passed to GeneralSatelliteTasking (e.g. sim_rate).
         """
+        if evolve_uncertainty and not sample_geometry:
+            raise ValueError("evolve_uncertainty=True requires sample_geometry=True")
+
         schedule_s = tuple(d * 86400.0 for d in schedule_days_before_tca)
         if schedule_s != tuple(sorted(schedule_s, reverse=True)) or schedule_s[-1] != 0.0:
             raise ValueError("schedule_days_before_tca must be descending and end at 0.0")
@@ -120,6 +138,7 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
         self.pc_threshold = pc_threshold
         self.max_dv_ms = max_dv_ms
         self.sample_geometry = sample_geometry
+        self.evolve_uncertainty = evolve_uncertainty
 
         ego_r0, ego_v0 = example_leo_orbit()
         rng = np.random.default_rng(targeting_seed)
@@ -144,9 +163,22 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
 
         if sample_geometry:
             geometry_df = pd.read_csv(FITTED_DIR / "geometry_events.csv")
-            self._sampler = SecondaryScenarioSampler(
-                geometry_df, ego_r0, ego_v0, schedule_s[0], rng
-            )
+            if evolve_uncertainty:
+                with open(FITTED_DIR / "schedule_library.json") as f:
+                    schedule_library = json.load(f)
+                evolution_df = pd.read_csv(FITTED_DIR / "covariance_evolution_events.csv")
+                self._sampler = SecondaryScenarioSampler(
+                    geometry_df,
+                    ego_r0,
+                    ego_v0,
+                    rng,
+                    schedule_library=schedule_library,
+                    evolution_df=evolution_df,
+                )
+            else:
+                self._sampler = SecondaryScenarioSampler(
+                    geometry_df, ego_r0, ego_v0, rng, nominal_tca_s=schedule_s[0]
+                )
             self._fixed_sigma_m = None
             self._fixed_combined_radius_m = None
             secondary_sat_args = {
@@ -181,7 +213,12 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
 
         super().__init__(
             satellites=[ego, secondary],
-            time_limit=schedule_s[0] + 1000.0,
+            # A callable: self.schedule_s may change every reset (stage
+            # 3's real, variable-length schedules), and this is
+            # re-evaluated by bsk_rl's own _randomize_time_limit() inside
+            # super().reset() -- AFTER our reset() override has already
+            # updated self.schedule_s for the current episode (see below).
+            time_limit=lambda: self.schedule_s[0] + 1000.0,
             terminate_on_time_limit=False,
             failure_penalty=-1000.0,  # safety-net signal for a real ConjunctionDynModel collision, see docs/09
             **kwargs,
@@ -209,23 +246,40 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
         self.schedule_index = 0
         self.cumulative_fuel_used_ms = 0.0
         self.maneuver_count = 0
-        # self.satellites persists across resets (only .dynamics/.fsw get
-        # rebuilt) -- see docs/17-env-implementation-notes.md.
-        self.satellites[0]._time_to_tca_s = self.schedule_s[0]
         if self._sampler is not None:
+            if seed is not None:
+                # Explicit seed -> honor the standard Gym contract
+                # (reset(seed=X) must be reproducible): reseed the
+                # sampler's RNG fresh so the same seed always samples the
+                # same scenario. When seed is None (the common case during
+                # real training loops), the RNG keeps advancing across
+                # resets instead -- that's what curriculum sampling wants
+                # (a different real event each episode), and doing so is
+                # itself the documented, deliberate part of the design
+                # (see docs/19-curriculum-stage-2.md) -- only the "same
+                # seed must reproduce" contract needed fixing, not the
+                # underlying continued-advancement behavior.
+                self._sampler.rng = np.random.default_rng(seed)
             self._sampler.generation += 1
             # Triggers this episode's sample+solve now (idempotent per
-            # generation -- see scenario_sampling.py) so _pc_sigma/
-            # _pc_combined_radius are set BEFORE super().reset(), which
-            # calls _get_obs() (needing them already set) at its own end,
-            # before this method gets control back. rN()/vN(), called
-            # inside super().reset() via bsk_rl's sat_args callables,
-            # then just reuse the same cached scenario.
-            self.satellites[0]._pc_sigma = self._sampler.current_sigma
+            # generation -- see scenario_sampling.py) so schedule_s and
+            # _pc_sigma/_pc_combined_radius are set BEFORE super().reset(),
+            # which calls _get_obs() (needing them already set) and
+            # re-evaluates the time_limit callable (needing self.schedule_s
+            # already updated) at its own end/start, before this method
+            # gets control back. rN()/vN(), called inside super().reset()
+            # via bsk_rl's sat_args callables, then just reuse the same
+            # cached scenario.
+            if self.evolve_uncertainty:
+                self.schedule_s = self._sampler.current_schedule_s
+            self.satellites[0]._pc_sigma = self._sampler.sigma_at_fraction(0.0)
             self.satellites[0]._pc_combined_radius = self._sampler.current_combined_radius
         else:
             self.satellites[0]._pc_sigma = self._fixed_sigma_m
             self.satellites[0]._pc_combined_radius = self._fixed_combined_radius_m
+        # self.satellites persists across resets (only .dynamics/.fsw get
+        # rebuilt) -- see docs/17-env-implementation-notes.md.
+        self.satellites[0]._time_to_tca_s = self.schedule_s[0]
         tuple_obs, info = super().reset(seed=seed, options=options)
         return tuple_obs[0], info
 
@@ -241,6 +295,10 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
         self.satellites[0]._time_to_tca_s = self.schedule_s[next_idx]
         self.schedule_index = next_idx
         is_final_step = self.schedule_index == len(self.schedule_s) - 1
+        if self.evolve_uncertainty:
+            total_span = self.schedule_s[0]
+            fraction = 1.0 if total_span == 0.0 else 1.0 - self.schedule_s[next_idx] / total_span
+            self.satellites[0]._pc_sigma = self._sampler.sigma_at_fraction(fraction)
 
         tuple_obs, base_reward, terminated, truncated, info = super().step(
             [full_ego_action, 0]
@@ -265,5 +323,6 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
 
         info["cumulative_fuel_used_ms"] = self.cumulative_fuel_used_ms
         info["maneuver_count"] = self.maneuver_count
+        info["schedule_length"] = len(self.schedule_s)
 
         return tuple_obs[0], reward, terminated, truncated, info
