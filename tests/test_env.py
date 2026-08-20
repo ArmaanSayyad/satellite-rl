@@ -149,3 +149,93 @@ def test_sampling_env_pc_sigma_and_radius_vary_with_sample():
         env.reset()
         seen_sigmas.add(env.satellites[0]._pc_sigma)
     assert len(seen_sigmas) > 1
+
+
+def test_reset_with_explicit_seed_is_reproducible():
+    """gymnasium's standard contract: reset(seed=X) called twice must
+    reproduce the same sampled scenario -- exercises the Phase 5d fix
+    (see docs/19-curriculum-stage-2.md's seeding section).
+    """
+    env = CollisionAvoidanceEnv(**SAMPLING_ENV_KWARGS)
+    env.reset(seed=123)
+    first = dict(env._sampler.current_sample)
+    env.reset(seed=123)
+    second = dict(env._sampler.current_sample)
+    assert first == second
+
+
+# Curriculum stage 3 (docs/20-curriculum-stage-3.md): evolving uncertainty
+# + real per-event schedules. sim_rate kept small since real schedules can
+# span multiple days.
+EVOLVING_ENV_KWARGS = {
+    "sample_geometry": True,
+    "evolve_uncertainty": True,
+    "sim_rate": 10.0,
+    "targeting_seed": 0,
+}
+
+
+def test_evolving_env_checker_compliance():
+    from gymnasium.utils.env_checker import check_env
+
+    env = CollisionAvoidanceEnv(**EVOLVING_ENV_KWARGS)
+    check_env(env, skip_render_check=True)
+
+
+def test_evolving_env_requires_sample_geometry():
+    with pytest.raises(ValueError):
+        CollisionAvoidanceEnv(sample_geometry=False, evolve_uncertainty=True)
+
+
+def test_evolving_env_schedule_is_well_formed_across_resets():
+    """Real per-event schedules are irregular and variable-length -- must
+    still always be strictly descending, end at exactly 0.0, and be
+    entirely non-negative (docs/20 -- real Kelvins data has some negative
+    time_to_tca entries that must be filtered, not just clipped).
+    """
+    env = CollisionAvoidanceEnv(**EVOLVING_ENV_KWARGS)
+    for _ in range(10):
+        env.reset()
+        sched = env.schedule_s
+        assert list(sched) == sorted(sched, reverse=True)
+        assert sched[-1] == 0.0
+        assert all(s >= 0.0 for s in sched)
+        assert len(sched) >= 2  # at least one decision step must be possible
+
+
+def test_evolving_env_sigma_shrinks_toward_tca():
+    """The whole point of stage 3: sigma should generally decrease across
+    the episode (real covariance shrinks as tracking improves), not stay
+    constant like stage 2. Not asserted as a strict per-step invariant
+    (docs/03 notes real per-event ratios aren't always monotonic) -- just
+    that the final sigma is meaningfully smaller than the initial one,
+    over enough episodes that this holds on average.
+    """
+    env = CollisionAvoidanceEnv(**EVOLVING_ENV_KWARGS)
+    shrink_ratios = []
+    for _ in range(10):
+        env.reset()
+        initial_sigma = env.satellites[0]._pc_sigma
+        terminated = truncated = False
+        while not (terminated or truncated):
+            _obs, _reward, terminated, truncated, _info = env.step(
+                np.zeros(3, dtype=np.float32)
+            )
+        final_sigma = env.satellites[0]._pc_sigma
+        shrink_ratios.append(initial_sigma / final_sigma)
+    assert np.median(shrink_ratios) > 1.0
+
+
+def test_evolving_env_runs_full_episodes():
+    env = CollisionAvoidanceEnv(**EVOLVING_ENV_KWARGS)
+    for _ in range(5):
+        env.reset()
+        terminated = truncated = False
+        n_steps = 0
+        info = {}
+        while not (terminated or truncated):
+            _obs, _reward, terminated, truncated, info = env.step(np.zeros(3, dtype=np.float32))
+            n_steps += 1
+        assert n_steps == info["schedule_length"] - 1
+        assert terminated
+        assert 0.0 <= info["pc_final"] <= 1.0

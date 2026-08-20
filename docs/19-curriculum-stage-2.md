@@ -75,31 +75,41 @@ value, not a global constant, while still not modeling the real
 anisotropy or its evolution across an episode's decision points. Both of
 those remain curriculum stage 3 scope.
 
-## A real, deliberate Gym-convention deviation: seeding
+## Seeding — initially deviated from Gym convention, then actually fixed (Phase 5d)
 
-`gymnasium.utils.env_checker` warns: *"Step observations are not equal
-although similar given the same seed and action."* This is expected and
-was checked, not just noticed and ignored: `CollisionAvoidanceEnv`'s
-internal sampling RNG (`np.random.default_rng(targeting_seed)`) is
-created once at `__init__` and keeps advancing across `reset()` calls —
-it is **not** reseeded by the `seed` argument passed to `reset()`. This
-means calling `env.reset(seed=42)` twice in a row does **not** reproduce
-the same sampled scenario the second time, which technically violates
-strict Gym determinism conventions.
+`gymnasium.utils.env_checker` warned here initially: *"Step observations
+are not equal although similar given the same seed and action."*
+`CollisionAvoidanceEnv`'s internal sampling RNG
+(`np.random.default_rng(targeting_seed)`) was created once at `__init__`
+and kept advancing across `reset()` calls regardless of the `seed`
+argument — so `env.reset(seed=42)` called twice in a row didn't reproduce
+the same sampled scenario, violating the standard Gym contract.
 
-This is deliberate, not an oversight: for curriculum training, the whole
-point of `sample_geometry=True` is that each episode sees a *different*
-real event — freezing the sample on every `reset(seed=X)` call would
-defeat that. `targeting_seed` still controls overall reproducibility (two
-environments constructed with the same `targeting_seed` draw the same
-*sequence* of scenarios across resets), which is the reproducibility
-guarantee that actually matters for this use case. Documented here so
-it's a known, intentional trade-off if it surfaces again (e.g. in a
-future evaluation harness that does want exact reset-to-reset
-reproducibility for a fixed benchmark — see `11-evaluation.md` — that use
-case should hold `sample_geometry=False` with a fixed scenario, or add a
-dedicated re-seeding hook, not assume this env's default sampling mode is
-reproducible per-reset).
+At the time (Phase 5c) this was written up as a deliberate, accepted
+trade-off — necessary for curriculum training (each episode should see a
+*different* real event) and not worth an explicit re-seeding mechanism.
+**That reasoning was only half right**: the two needs aren't actually in
+tension. Phase 5d (curriculum stage 3, see
+`20-curriculum-stage-3.md`) added the real fix once `evolve_uncertainty`'s
+much more visible schedule variation turned this from a soft `env_checker`
+*warning* into a hard `AssertionError` (`check_step_determinism` calls
+`reset(seed=X)` twice and asserts exact equality — variable-length real
+schedules made the resulting observations different enough to fail that
+assertion outright, not just differ slightly):
+
+`CollisionAvoidanceEnv.reset()` now reseeds the sampler's RNG
+(`np.random.default_rng(seed)`) whenever an **explicit** `seed` is passed,
+making `reset(seed=X)` genuinely reproducible as Gym expects — while
+`reset()`/`reset(seed=None)` (what a normal training loop actually calls
+every episode) leaves the RNG to keep advancing, still giving fresh real
+events each episode. Both `env_checker` runs (stage 2 and stage 3, no
+warnings or errors) confirm this. The one remaining thing worth knowing:
+`targeting_seed` (the constructor argument) still governs the *initial*
+RNG state and the reproducible sequence when no explicit `reset(seed=X)`
+is ever passed — unchanged from the original design, just no longer in
+tension with per-seed reproducibility when that's what's needed instead
+(e.g. a future evaluation harness wanting a fixed benchmark scenario per
+seed, per `11-evaluation.md`).
 
 ## Validated
 

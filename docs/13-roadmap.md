@@ -138,7 +138,7 @@ phase depends on "trust me, it'll come together later."
   non-terminating orbit (hit bsk_rl's default 200km min-altitude check
   with some parameter choices) — **fixed in Phase 5a**.
 
-## Phase 5 — Curriculum stages 2–3
+## Phase 5 — Curriculum stages 2–3 — DONE (Aug 2026)
 - Sampled geometry (stage 2), then CDM-sequence uncertainty evolution
   (stage 3, the actual v1 target environment) per `03-scenario-design.md`.
 - **Carried over from Phase 4** (see `17-env-implementation-notes.md`
@@ -176,7 +176,25 @@ phase depends on "trust me, it'll come together later."
   design (the sampling RNG advances across resets, which is what
   curriculum training wants) — `targeting_seed` governs the reproducible
   sequence instead. 10/10 env tests passing (4 new).
-- **Stage 3 (CDM-sequence uncertainty evolution) — not yet started.**
+- **Stage 3 done (Phase 5d, see `20-curriculum-stage-3.md`)**:
+  `CollisionAvoidanceEnv(sample_geometry=True, evolve_uncertainty=True)` —
+  real per-event CDM-timing schedules (bootstrapped from Phase 2's
+  `schedule_library.json`) and sigma that geometrically interpolates
+  between the sampled event's real first/last covariance (bootstrapped
+  from a new `covariance_evolution_events.csv`, extracted in this phase
+  since Phase 2 had only saved the fitted, KS-rejected ratio, not raw
+  pairs). Two real bugs caught before shipping: negative real timestamps
+  (some CDMs are reported after TCA) broke schedule ordering; and
+  `env_checker`'s determinism check went from a soft warning (stage 2) to
+  a hard failure (stage 3's larger schedule variation) -- fixed properly
+  this time by reseeding the sampler on explicit `reset(seed=X)` while
+  still letting it advance on `reset(seed=None)`, which also retroactively
+  fixed stage 2's warning (doc `19` corrected to match). This is the full
+  v1 target environment per `03-scenario-design.md`. 16/16 env tests
+  passing (6 new). Real cost flagged for Phase 6 planning: stage-3
+  episodes are substantially slower than stages 1/2 (real schedules can
+  have 20+ decision points vs. the fixed 4-6), not reflected in Phase 4's
+  ~8.5 steps/sec benchmark.
 
 ## Phase 6 — Training
 - SB3 PPO, starting hyperparameters per `10-rl-algorithm.md`, tuned based
