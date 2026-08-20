@@ -128,26 +128,33 @@ phase depends on "trust me, it'll come together later."
   baselines. 74/74 tests passing (env tests skip gracefully in CI, which
   lacks the full Basilisk stack — see `17`). Two real limitations found
   and documented, not hidden, carried to Phase 5: (1) high-relative-speed
-  scenarios need a TCA-refinement step (targeting currently assumes
-  closest approach occurs exactly at the precomputed nominal instant;
-  residual dynamics shift this by enough, amplified by relative speed, to
-  matter for realistic Kelvins-derived speeds) — confirmed via a 10x
-  relative-speed sweep showing proportional error scaling; (2) the
-  scenario generator doesn't check that a solved secondary trajectory is
-  a sane, non-terminating orbit (hit bsk_rl's default 200km min-altitude
-  check with some parameter choices).
+  scenarios showed a realized-vs-targeted miss distance gap, initially
+  (incorrectly) diagnosed as timing sensitivity amplified by relative
+  speed — **this diagnosis was corrected in Phase 5a/5b** (see
+  `18-scenario-generator-hardening.md` part 2): broader testing showed
+  the gap is a scenario-dependent positional residual from the
+  J2-vs-Basilisk model gap, not a timing effect; (2) the scenario
+  generator doesn't check that a solved secondary trajectory is a sane,
+  non-terminating orbit (hit bsk_rl's default 200km min-altitude check
+  with some parameter choices) — **fixed in Phase 5a**.
 
 ## Phase 5 — Curriculum stages 2–3
 - Sampled geometry (stage 2), then CDM-sequence uncertainty evolution
   (stage 3, the actual v1 target environment) per `03-scenario-design.md`.
 - **Carried over from Phase 4** (see `17-env-implementation-notes.md`
-  part 3): (a) a TCA-refinement step in the targeting solver — numerically
-  search for the true local-minimum-separation time near the nominal TCA
-  rather than assuming it occurs exactly there, needed for realistic
-  (high) relative speeds; (b) an orbit-sanity check in the scenario
-  generator (reject/resample secondary trajectories that violate
-  minimum-altitude or other basic physical-validity bounds), analogous to
-  the Cowell-integration-failure retry already in `targeting.py`.
+  part 3, corrected in `18-scenario-generator-hardening.md`): (a) an
+  orbit-sanity check in the scenario generator (reject/resample secondary
+  trajectories that violate minimum-altitude bounds) — **done, Phase
+  5a**; (b) a TCA-refinement utility (`scenario/tca_refinement.py`,
+  finds the true local-minimum-separation time via real Basilisk
+  propagation) — **done, Phase 5b**, though broader testing showed it
+  doesn't reliably close the realized-vs-targeted gap (that gap is
+  dominated by a scenario-dependent positional residual, not timing —
+  see `18`); decided to use realized/refined values as ground truth
+  rather than pursue full closed-loop re-targeting (documented as a
+  legitimate future improvement, not attempted). `refine_tca()` is not
+  yet wired into `CollisionAvoidanceEnv` — planned for the curriculum
+  work below, where the environment is being modified anyway.
 - **Deliverable**: full v1 environment, still validated with a random/
   scripted policy before any learning is attempted.
 

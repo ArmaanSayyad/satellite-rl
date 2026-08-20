@@ -78,3 +78,96 @@ running. **Fix applied**: raised `max_attempts` default from 10 to 50,
 which gives >99.99% cumulative success at the worst observed per-attempt
 rate. `docs/03-scenario-design.md` and the function's own docstring
 updated to state the real rate rather than the earlier optimistic one.
+
+## 2. TCA-timing-sensitivity — real finding, but Phase 4's diagnosis was wrong
+
+### What Phase 4 concluded (`17-env-implementation-notes.md` part 3)
+
+Comparing one relative_speed=200 m/s case against one relative_speed=20
+m/s case, the realized-vs-targeted miss distance error was much larger at
+the higher speed. Phase 4 concluded this was a **timing** effect: a small
+residual dynamics offset (Basilisk's true closest-approach time differing
+slightly from the targeting solver's precomputed nominal instant),
+amplified by relative speed (`position_error ≈ timing_offset_s ×
+relative_speed`). That led to `refine_tca()` (this section): find the
+TRUE local-minimum-separation time via a real Basilisk propagation from
+t0, rather than trusting the nominal instant.
+
+### What `refine_tca()` actually implements
+
+`scenario/tca_refinement.py`: propagates both objects under full
+Basilisk dynamics (10th-degree spherical harmonics + SPICE, matching
+`bsk_rl`'s own `DynamicsModel` — reusing the exact setup validated in
+Phase 4/`17`) from t0 to just past the nominal TCA, records the full
+trajectory at 5–10s resolution, and locates the true minimum-separation
+time via quadratic interpolation through the bracketing samples (no
+second, finer simulation pass needed — benchmarked at ~1.5–3s wall clock
+for a realistic 3-day, two-satellite scenario, a one-time cost per
+scenario).
+
+### Testing it broadly overturned the Phase 4 diagnosis
+
+Running `refine_tca()` across a wider range of parameters than the single
+before/after comparison Phase 4 used:
+
+| relative speed | duration | nominal separation | refined separation | timing offset | target |
+|---|---|---|---|---|---|
+| 200 m/s | 0.2d | 2989m | 2356m | +4.6s | 300m |
+| 2000 m/s | 0.2d | 901m | 901m | -0.25s | 300m |
+| 8000 m/s | 0.2d | 272m | 272m | -0.01s | 300m |
+| 15000 m/s | 0.2d | 238m | 238m | -0.00s | 300m |
+
+At fixed duration, **higher relative speed correlates with a *smaller*
+timing offset and a *smaller* realized-vs-target gap** — the opposite of
+Phase 4's conclusion. And in most rows here, refinement changes nothing
+(the nominal instant was already the true minimum) while the
+realized-vs-target gap is still large or still small independent of that.
+**The dominant driver is not a timing effect amplified by relative
+speed.** Phase 4's conclusion was drawn from too small a sample (one
+comparison) and doesn't hold up under broader testing — recorded here
+plainly rather than left standing.
+
+### Corrected understanding
+
+The realized-vs-targeted miss distance gap is a **real, scenario-
+dependent residual** from the J2-vs-full-Basilisk model gap (J3+,
+tesseral/sectoral harmonics not modeled by the targeting solver's
+propagator — see part 1 of `17-env-implementation-notes.md`). Its size
+appears to depend on the specific sampled geometry (how the two orbits'
+orientation interacts with Earth's higher-order gravity field) in ways
+not explained by relative speed or duration alone — a genuine positional/
+geometric divergence, not primarily a "right trajectory, sampled at the
+wrong instant" timing problem. Timing refinement (`refine_tca()`) is real
+and correctly implemented — it finds the objectively true closest-
+approach time and distance, which is strictly at least as accurate as
+assuming the nominal instant — but it does not reliably close the
+dominant gap.
+
+### What this means for the project, practically
+
+Two honest options, and the pragmatic one is adopted for now:
+
+1. **Full closed-loop re-targeting** (differential correction: fly the
+   initial guess through real Basilisk dynamics, measure the error,
+   adjust the secondary's initial condition, repeat until converged).
+   This is the principled fix and how real orbit-determination software
+   handles exactly this class of problem — but it's a substantially
+   bigger feature (needs a sensitivity/Jacobian estimate, likely via
+   finite differences, each requiring its own Basilisk propagation; not
+   attempted here, flagged as a legitimate future improvement if tighter
+   fidelity becomes necessary for training results).
+2. **Use the realized (refined) values as the scenario's actual ground
+   truth**, rather than insisting the environment match the originally-
+   sampled target exactly. `refine_tca()`'s output (`refined_tca_s`,
+   `min_separation_m`) is genuinely correct information about what the
+   scenario actually is once flown through real dynamics — adopted here.
+   `miss_distance_m`/`relative_speed_ms` passed to the targeting solver
+   should be understood as *requested* values that ground the sampling
+   distribution in real Kelvins statistics (per `03-scenario-design.md`),
+   not as guarantees about the exact realized encounter.
+
+`refine_tca()` is not yet wired into `CollisionAvoidanceEnv` — that
+integration (updating the environment's schedule/reward reference to use
+the refined TCA and realized separation) is deferred to the curriculum-
+stage work (sampled geometry, evolving uncertainty) later in Phase 5,
+where the environment is being modified anyway.
