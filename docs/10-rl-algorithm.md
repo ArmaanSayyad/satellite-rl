@@ -45,28 +45,35 @@ uncertainty from repeated noisy observations, a recurrent policy — LSTM/
 GRU — or an explicit Bayesian filter would become necessary. Not needed
 for v1, flagged for completeness.)
 
-## Hyperparameters — starting point, not final
+## Hyperparameters — Phase 6 actuals, and a corrected prediction
 
-v1 starts from SB3's PPO defaults (well-tuned for continuous-control tasks
-generally: `n_steps=2048`, `batch_size=64`, `gamma=0.99`, `gae_lambda=0.95`,
-`clip_range=0.2`, `learning_rate=3e-4`) and adjusts based on observed
-training behavior rather than pre-guessing task-specific values:
-- `gamma`: given short episodes (6–12 decision steps per `09-episode-
-  design.md`), the effective horizon is short — 0.99 may be higher than
-  needed; worth testing 0.95–0.99 range once training is running.
-- `n_steps`/rollout length: needs enough episodes per update given the
-  short-episode structure; likely needs tuning upward from the default to
-  get a stable enough batch of complete episodes per PPO update.
-- Entropy coefficient: given the near-zero-action "wait" behavior
-  discussed in `07-action-space.md`, some exploration pressure is needed
-  early in training to discover that *acting* is sometimes necessary
-  (a policy that collapses to always-zero-action early would look
-  falsely converged) — worth explicit attention, not just left at default,
-  during Phase 6 (`13-roadmap.md`).
+v1 started from SB3's PPO defaults (`n_steps=2048`, `batch_size=64`,
+`gamma=0.99`, `gae_lambda=0.95`, `clip_range=0.2`, `learning_rate=3e-4`).
+Phase 6 (`21-training-results.md`) ran real training and settled on:
+`n_steps=64`, `batch_size=32`, `gamma=0.95`, `gae_lambda=0.9`,
+`ent_coef=0.01` (SB3 default is 0.0), `clip_range`/`learning_rate`
+unchanged.
 
-These are documented here as the starting hypothesis; actual tuned values
-get recorded in a training-log doc once Phase 6 runs, not retrofitted into
-this design doc.
+- `gamma=0.95`: as predicted below — short episodes (4-6 decision steps
+  for the fast curriculum stages actually used for training, see
+  `21`) don't need 0.99's long-horizon discounting.
+- `ent_coef=0.01`: as predicted below — added explicit exploration
+  pressure so the policy doesn't collapse to always-near-zero-action.
+- **`n_steps=64`, a correction, not a confirmation**: this doc originally
+  predicted `n_steps` would need tuning *upward* from 2048 (more steps
+  per update, for a stable batch of complete short episodes). Real
+  measured environment throughput (`17`/`20`: ~8-9 steps/sec for the fast
+  curriculum stages, only ~1.3 steps/sec for stage 3) made that
+  direction infeasible in practice: at 2048 steps/update, even the fast
+  stages need ~17 minutes of wall-clock time *before a single gradient
+  update*, so a realistic training budget would only afford a couple of
+  updates total — nowhere near enough for real learning. Going *smaller*
+  (64) instead trades noisier per-update gradient estimates for enough
+  actual updates (~78 for a 5,000-timestep run) to show real training
+  signal within a feasible wall-clock budget. The original prediction
+  wasn't wrong about the underlying tension (short episodes vs. batch
+  stability) — it just didn't yet have real throughput numbers to weigh
+  that against the compute-budget constraint, which turned out to dominate.
 
 ## Compute budget
 
@@ -76,6 +83,15 @@ comfortably CPU-trainable). Main compute cost is **environment step
 throughput** — each step runs a real Basilisk propagation, which is slower
 than a toy Gym environment's `step()`. Parallelizing environment rollouts
 (SB3's `SubprocVecEnv` across multiple CPU cores) is the relevant scaling
-lever, not GPU acquisition — worth benchmarking single-env step time early
-(Phase 4, `13-roadmap.md`) to estimate realistic wall-clock training time
-before committing to a specific total-timestep budget.
+lever, not GPU acquisition.
+
+**Real measured throughput** (Phase 6, single process, no parallelization):
+~8-9 steps/sec on curriculum stages 1/2 with a short fixed schedule,
+~1.3 steps/sec on stage 3 (real per-event schedules, up to 20+ decision
+points per episode). This is why Phase 6's actual training run used stage
+2 with a short schedule, not the "full v1" stage 3 environment — stage 3
+at this single-process throughput would need many hours for even a modest
+timestep budget. `SubprocVecEnv` parallelization was not attempted in
+Phase 6 (flagged as the natural next lever if more compute becomes
+available or stage-3 training is pursued later) — see `21` for what was
+actually run and why.
