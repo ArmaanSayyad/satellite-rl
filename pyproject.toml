@@ -22,6 +22,7 @@ dependencies = [
   "scipy",
   "stable-baselines3>=2.0",
   "sgp4",
+  "pandas",
 ]
 
 [project.optional-dependencies]
@@ -29,7 +30,6 @@ dev = [
   "pytest",
   "ruff",
   "matplotlib",
-  "pandas",
   # orekit_jpype is dev/test-only (Pc cross-validation), never a runtime
   # dependency — see docs/04-collision-probability.md and
   # docs/12-architecture.md. Pulls in a JVM; install manually if you want

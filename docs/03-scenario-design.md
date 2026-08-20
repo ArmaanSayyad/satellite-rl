@@ -60,23 +60,41 @@ secondary's initial state ourselves:
 
 ## Sampling realistic geometry from Kelvins statistics
 
-Rather than hand-picking miss distances/covariances, v1 fits simple
-distributions (log-normal is a reasonable first choice for miss distance
-and relative speed, given they're strictly positive and right-skewed in
-orbital mechanics) to the relevant Kelvins columns:
-- `miss_distance`, `relative_speed` — encounter geometry.
-- `c_sigma_r/t/n`, `t_sigma_r/t/n` (and cross-terms) — covariance
-  magnitude and shape, combined per the Pc doc's method.
-- `risk` — used **only for validation** (does our generated scenario's
-  computed Pc land in a realistic range compared to real events with
-  similar miss-distance/covariance inputs?), never as a direct input to
-  scenario generation (that would be circular).
+**Updated after Phase 2** (`15-distribution-fitting-results.md`): the
+original plan below — independent lognormal fits per parameter — was
+implemented and tested against the real data. The fits were statistically
+poor (KS-rejected for every parameter, with KS statistics of 0.10–0.25,
+not just large-sample-size pedantry) and, structurally, independent
+marginals discard real cross-parameter correlation regardless of fit
+quality. **v1 uses joint bootstrap resampling instead**: draw an entire
+real event's `(miss_distance, relative_speed, sigma_x, sigma_z,
+combined_radius)` tuple, with replacement, from the real ~8,700-event
+table (`data/fitted/geometry_events.csv`,
+`sample_scenario_geometry_bootstrap()`). This is both more honest (no
+rejected parametric assumption) and more correct (preserves real joint
+structure). The originally-planned independent-lognormal sampler still
+exists as a documented fallback but is not the recommendation.
+
+Original plan (kept for context on what was tried and why it changed):
+rather than hand-picking miss distances/covariances, fit simple
+distributions (log-normal, chosen since these quantities are strictly
+positive and right-skewed) to the relevant Kelvins columns —
+`miss_distance`, `relative_speed`, and combined covariance magnitude/shape
+(from `c_sigma_r/t/n`, `t_sigma_r/t/n` and cross-terms, combined per the
+Pc doc's method) — and sample each independently.
+
+`risk` is used **only for validation** (does our generated scenario's
+computed Pc land in a realistic range compared to real events with
+similar miss-distance/covariance inputs?), never as a direct input to
+scenario generation (that would be circular) — this part of the plan is
+unchanged.
 
 This keeps the simulator's difficulty distribution empirically grounded
 instead of arbitrary, and gives us a natural train/held-out-eval split:
-fit distributions on a training partition of Kelvins events, hold out a
-partition of *actual* real events (full CDM sequences, real outcomes) for
-the v1 success-criterion #2 sanity check (`01-problem-scope.md`).
+bootstrap-sample scenarios from a training partition of Kelvins events,
+hold out a partition of *actual* real events (full CDM sequences, real
+outcomes) for the v1 success-criterion #2 sanity check
+(`01-problem-scope.md`).
 
 ## Covariance evolution across the CDM sequence
 
@@ -84,11 +102,20 @@ Real covariance shrinks (usually) as TCA approaches and tracking improves.
 v1 models this simply: interpolate covariance magnitude between an initial
 (larger, first-CDM-like) value and a final (smaller, last-CDM-like) value
 sampled from the Kelvins dataset's *actual* first-CDM vs. last-CDM
-covariance ratio for real events, rather than inventing a shrink rate. Not
-every real event's covariance shrinks monotonically (tracking gaps or
-maneuvers by either object can cause jumps) — v1 explicitly does **not**
-model those anomalies; monotonic shrink is a deliberate simplification,
-noted here so it isn't silently assumed to be more realistic than it is.
+covariance ratio for real events, rather than inventing a shrink rate.
+**Measured in Phase 2** (`15-distribution-fitting-results.md`): across
+8,482 real multi-CDM events, the median ratio is **8.36×** — i.e. a
+typical event's first-reported covariance magnitude is about 8x its final
+value. This confirms modeling the shrink at all is worthwhile (it's a
+roughly order-of-magnitude effect, not a minor refinement); as with the
+geometry parameters above, the ratio's own distribution across events was
+also KS-rejected as lognormal, so sampling should bootstrap from real
+per-event pairs rather than a fitted parametric ratio (a follow-up noted
+in `15-distribution-fitting-results.md`, not yet wired up). Not every real
+event's covariance shrinks monotonically (tracking gaps or maneuvers by
+either object can cause jumps) — v1 explicitly does **not** model those
+anomalies; monotonic shrink is a deliberate simplification, noted here so
+it isn't silently assumed to be more realistic than it is.
 
 ## Background object population (secondary priority for v1)
 
