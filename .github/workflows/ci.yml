@@ -1,10 +1,17 @@
 name: CI
 
-# Phase 0: lint + placeholder test only. No Basilisk install here — the
-# pc/ and scenario/ modules (Phase 1-3) don't depend on Basilisk (see
-# docs/12-architecture.md), so CI stays fast and doesn't need it until
-# env/ tests (Phase 4+) are added, at which point this workflow gets a
-# Basilisk install step.
+# No Basilisk/bsk-rl/gymnasium/hapsira/stable-baselines3 install here --
+# the pc/ and scenario/ modules (Phase 1-3) only need numpy/scipy/pandas
+# (see docs/12-architecture.md), so CI installs just those directly rather
+# than the full pyproject.toml dependency list (which would pull in
+# bsk-rl, needing Basilisk preinstalled). This keeps CI fast until env/
+# tests (Phase 4+) need the full stack, at which point this workflow gets
+# a real Basilisk install step.
+#
+# NOTE: an earlier version of this file used `pip install -e . --no-deps`
+# with no explicit deps at all, which meant numpy/scipy were never
+# installed -- broke CI the moment Phase 1 added real tests (see PR #1's
+# CI run). Fixed by installing the actual lightweight deps explicitly.
 
 on:
   push:
@@ -20,12 +27,13 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install package
-        # --no-deps: Phase 0's satellite_rl package has no real code yet,
-        # so we skip pulling in bsk-rl/hapsira/stable-baselines3 etc. here.
+        # --no-deps on the package itself: skip pulling in bsk-rl/hapsira/
+        # gymnasium/stable-baselines3/sgp4 here, but DO install the real
+        # lightweight deps pc/ and scenario/ actually import at test time.
         # Once env/ tests (Phase 4+) need the full stack, drop --no-deps
         # and add a Basilisk install step above.
         run: |
-          pip install ruff pytest
+          pip install ruff pytest numpy scipy pandas
           pip install -e . --no-deps
       - name: Lint
         run: ruff check src tests

@@ -80,7 +80,7 @@ def test_chan_matches_exact_circular_case(x0, z0, sigma, hbr):
     assert pc_chan_val == pytest.approx(pc_exact, abs=1e-4)
 
 
-@pytest.mark.parametrize("seed,case", enumerate(ELLIPTICAL_CASES))
+@pytest.mark.parametrize("seed,case", list(enumerate(ELLIPTICAL_CASES)))
 def test_foster_matches_monte_carlo(seed, case):
     x0, z0, sigma_x, sigma_z, hbr = case
     geometry = EncounterGeometry2D(x0=x0, z0=z0, sigma_x=sigma_x, sigma_z=sigma_z)
