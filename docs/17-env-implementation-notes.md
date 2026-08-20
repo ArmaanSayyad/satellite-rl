@@ -155,6 +155,20 @@ Verified by reading the actual installed source
 
 ## 3. A real limitation found validating the full environment: TCA timing sensitivity
 
+**Correction (Phase 5, see `18-scenario-generator-hardening.md` part 2)**:
+this section's diagnosis — that the gap is a timing offset amplified by
+relative speed — was drawn from a single before/after comparison and
+turned out not to hold up under broader testing. Testing `refine_tca()`
+(built to fix this) across more parameter combinations showed the timing
+offset actually *shrinks* at higher relative speed in some cases, and
+refinement often changes nothing at all while the gap remains. The real
+cause is a scenario-dependent positional/geometric residual from the
+J2-vs-full-Basilisk model gap, not primarily a timing problem — see `18`
+for the full corrected picture and the resulting decision (use realized
+values as ground truth rather than chase exact target matching). Left
+below for the historical record of what was actually observed at the
+time, same as `16`'s similar correction note.
+
 With the full `CollisionAvoidanceEnv` built (observation/reward wiring,
 episode stepping — see `12-architecture.md`'s `env/` layout), a
 never-maneuver baseline run with the env's original defaults
