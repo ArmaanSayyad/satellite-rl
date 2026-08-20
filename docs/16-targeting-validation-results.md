@@ -1,5 +1,17 @@
 # 16 — Targeting Solver Validation Results (Phase 3)
 
+**Correction (Phase 4, see `17-env-implementation-notes.md`)**: part 2
+below concluded the Basilisk-fidelity question was unresolved due to
+raw-Basilisk setup bugs. That conclusion was wrong. Building the real
+environment on `bsk_rl` in Phase 4 reproduced the same ~2960km divergence
+even with `bsk_rl`'s correct gravity/SPICE wiring — the actual cause is
+real J2 nodal precession (~14° RAAN drift over 3 days for the example
+orbit, confirmed against the standard J2 formula), which the two-body
+targeting solver didn't model. Fixed by adding J2 to the targeting
+propagator (~433x error reduction). This doc is left as-is below for the
+historical record of the (real, still-useful) raw-Basilisk API bugs found
+along the way — see `17` for the corrected conclusion and the fix.
+
 Two separate questions, kept explicitly separate because they have very
 different confidence levels:
 
