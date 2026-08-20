@@ -9,9 +9,11 @@ Built on [`bsk_rl`](https://github.com/AVSLab/bsk_rl) (real orbital
 dynamics via Basilisk), with conjunction scenarios grounded in real
 historical data from ESA's Kelvins Collision Avoidance Challenge dataset.
 
-**Status: Phase 2 of 9 complete** (collision-probability module validated
-against real historical data; scenario-generation distributions fitted).
-No trainable environment yet — see [`docs/13-roadmap.md`](docs/13-roadmap.md).
+**Status: Phase 4 of 9 complete** — a working, tested Gymnasium
+environment exists (fixed scenario, low-relative-speed regime; see
+[`docs/17-env-implementation-notes.md`](docs/17-env-implementation-notes.md)
+for known limitations). Not yet trained — see
+[`docs/13-roadmap.md`](docs/13-roadmap.md).
 
 ## Why this project exists
 

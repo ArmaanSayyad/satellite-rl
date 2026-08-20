@@ -99,7 +99,7 @@ phase depends on "trust me, it'll come together later."
   validate_targeting_against_basilisk.py` kept, clearly marked as not
   yet a trustworthy result, for whoever picks this up in Phase 4.
 
-## Phase 4 — Custom Gym environment (fixed scenario)
+## Phase 4 — Custom Gym environment (fixed scenario) — DONE (Aug 2026)
 - `env/satellite.py`, `env/conjunction_dyn.py`, observation/action/reward
   wiring per `06`, `07`, `08`, curriculum stage 1 (single fixed geometry,
   fixed schedule, per `03`/`09`).
@@ -116,10 +116,38 @@ phase depends on "trust me, it'll come together later."
   never-act policy's terminal risk penalty responds to Pc as expected).
 - **Deliverable**: a working, tested Gym env on the simplest scenario,
   plus the Basilisk-fidelity numbers `03`/`16` deferred here.
+- **Done**: `src/satellite_rl/env/{satellites,observations,
+  collision_avoidance_env}.py` implemented on top of real, source-verified
+  `bsk_rl` API (not secondhand summaries — see `17-env-implementation-
+  notes.md`). The carried-over Basilisk-fidelity question was resolved,
+  with a correction: Phase 3's "unresolved raw-Basilisk bug" framing was
+  wrong — the divergence was real J2 nodal precession, fixed by adding J2
+  to the targeting propagator (~433x error reduction, see `17`).
+  `env_checker` passes; throughput ~8.5 steps/sec; reward function
+  validated to sensibly differentiate never-maneuver vs. always-thrust
+  baselines. 74/74 tests passing (env tests skip gracefully in CI, which
+  lacks the full Basilisk stack — see `17`). Two real limitations found
+  and documented, not hidden, carried to Phase 5: (1) high-relative-speed
+  scenarios need a TCA-refinement step (targeting currently assumes
+  closest approach occurs exactly at the precomputed nominal instant;
+  residual dynamics shift this by enough, amplified by relative speed, to
+  matter for realistic Kelvins-derived speeds) — confirmed via a 10x
+  relative-speed sweep showing proportional error scaling; (2) the
+  scenario generator doesn't check that a solved secondary trajectory is
+  a sane, non-terminating orbit (hit bsk_rl's default 200km min-altitude
+  check with some parameter choices).
 
 ## Phase 5 — Curriculum stages 2–3
 - Sampled geometry (stage 2), then CDM-sequence uncertainty evolution
   (stage 3, the actual v1 target environment) per `03-scenario-design.md`.
+- **Carried over from Phase 4** (see `17-env-implementation-notes.md`
+  part 3): (a) a TCA-refinement step in the targeting solver — numerically
+  search for the true local-minimum-separation time near the nominal TCA
+  rather than assuming it occurs exactly there, needed for realistic
+  (high) relative speeds; (b) an orbit-sanity check in the scenario
+  generator (reject/resample secondary trajectories that violate
+  minimum-altitude or other basic physical-validity bounds), analogous to
+  the Cowell-integration-failure retry already in `targeting.py`.
 - **Deliverable**: full v1 environment, still validated with a random/
   scripted policy before any learning is attempted.
 

@@ -148,22 +148,24 @@ Ordered by what we'll actually implement first:
 
 ## Open technical risk to flag honestly
 
-**Status after Phase 3 (`16-targeting-validation-results.md`): still
-genuinely open, not resolved.** The two-body targeting solver itself
-(`scenario/targeting.py`) is fully implemented and validated — self-
-consistency errors are floating-point-perfect in the median case, with a
-real, explained tail (up to ~170m) from hyperbolic-orbit cases at high
-sampled relative speed. What's *not* yet measured is the actual question
-this section originally asked: how much does Basilisk's real 10th-degree-
-spherical-harmonics dynamics diverge from the two-body model used to
-compute the initial condition. A hand-rolled raw-Basilisk validation
-script found and fixed three real bugs (numpy-array initial conditions
-mis-parsing, missing SPICE planet-orientation setup, missing explicit
-`GravBodyVector` assignment) but still didn't converge to a physically
-plausible result. Decision: stop hand-rolling raw Basilisk scripting and
-defer this measurement to Phase 4, where it'll be done properly using
-`bsk_rl`'s own `DynamicsModel` (already correct, since it's a maintained,
-published RL framework) rather than continuing to duplicate that wiring
-by hand. See `16-targeting-validation-results.md` for the full
-investigation — this is not being swept under the rug, just correctly
-resequenced to where it's cheaper and more reliable to answer.
+**Status after Phase 4 (`17-env-implementation-notes.md`): resolved.**
+Phase 3 flagged this as an unresolved raw-Basilisk debugging problem;
+that framing was wrong. Building the real environment on `bsk_rl` in
+Phase 4 (which handles gravity/SPICE setup correctly, sidestepping all
+three raw-Basilisk bugs Phase 3 found) reproduced the *same* ~2960km
+divergence anyway — ruling out "bad raw Basilisk setup" as the cause. The
+actual cause: real J2 nodal (RAAN) precession, ~14° over 3 days for the
+example orbit, confirmed by directly checking orbital elements
+(a/e/i nearly constant, Ω drifted exactly as the standard J2 secular-drift
+formula predicts) — a large, genuine physical effect the two-body
+targeting solver simply didn't model, not a bug. **Fix**: `scenario/
+targeting.py`'s propagator was upgraded to include J2 (hapsira's Cowell
+propagator + a J2 perturbation term), cutting the divergence from
+~2960km to ~6.8km over 3 days (~433x) — small relative to realistic miss
+distances (median ~12km), consistent with the residual being higher-order
+terms (J3+, tesseral/sectoral harmonics) that aren't modeled. See `17` for
+the full investigation, the orbital-element evidence, and a second issue
+this upgrade surfaced (hapsira's Cowell integrator fails outright for
+~4% of sampled geometries due to a hardcoded internal tolerance — fixed
+with a resample-and-retry wrapper, since the failing parameter is already
+a free/sampled one).
