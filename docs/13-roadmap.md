@@ -196,11 +196,32 @@ phase depends on "trust me, it'll come together later."
   have 20+ decision points vs. the fixed 4-6), not reflected in Phase 4's
   ~8.5 steps/sec benchmark.
 
-## Phase 6 — Training
-- SB3 PPO, starting hyperparameters per `10-rl-algorithm.md`, tuned based
-  on observed training curves.
-- Reward-weight sensitivity analysis per `08-reward-function.md`.
-- **Deliverable**: a trained policy checkpoint + training curves.
+## Phase 6 — Training — DONE
+- SB3 PPO on curriculum stage 2 (short fixed schedule; stage 3 measured too
+  slow for single-process training this phase, ~1.3 steps/sec per `20`).
+  5,000 timesteps, 780 updates, ~53 min wall clock. Hyperparameters tuned
+  from real throughput measurements, not just defaults — see `10`'s
+  corrected `n_steps` reasoning.
+- Real training effect confirmed: reward trended up (-0.2596 → -0.2435,
+  first/last 10 episodes), fuel usage collapsed from random-baseline
+  levels (~35 m/s) to near-minimal (0.39 m/s).
+- **Honest negative result**: on a held-out real-event set (n=20 and
+  n=50, `targeting_seed=999`), the trained policy (reward -0.2039) is
+  *worse* than the trivial never-maneuver baseline (reward ≈ 0), though it
+  clearly beats always-max-thrust and random. Root cause investigated
+  empirically, not guessed: the policy still acts on every decision step
+  regardless of predicted risk, and its held-out reward has ~zero variance
+  across varied real geometries — consistent with a small training budget
+  producing a near state-independent "small nudge" action rather than one
+  that gates on risk. Full writeup, including why this isn't a held-out-
+  set artifact, in `21-training-results.md`.
+- Reward-weight sensitivity analysis (`08-reward-function.md`) **not**
+  done this phase — deferred, since the base training run itself needs a
+  longer budget/stratified evaluation first (see `21`'s follow-up list)
+  before a sensitivity sweep on top of it would be informative.
+- **Deliverable**: trained policy checkpoint (`runs/ppo_stage2_run1.zip`,
+  local/gitignored per existing `runs/` pattern) + training curve
+  (`runs/ppo_stage2_run1_monitor.png`) + real results write-up (`21`).
 
 ## Phase 7 — Evaluation
 - All four baselines (`11-evaluation.md`), full metric suite, held-out

@@ -1,12 +1,18 @@
 name: CI
 
-# No Basilisk/bsk-rl/gymnasium/hapsira/stable-baselines3 install here --
-# the pc/ and scenario/ modules (Phase 1-3) only need numpy/scipy/pandas
-# (see docs/12-architecture.md), so CI installs just those directly rather
+# No Basilisk/bsk-rl/gymnasium/hapsira install here -- the pc/ and
+# scenario/ modules only need numpy/scipy/pandas (see
+# docs/12-architecture.md), so CI installs just those directly rather
 # than the full pyproject.toml dependency list (which would pull in
 # bsk-rl, needing Basilisk preinstalled). This keeps CI fast until env/
 # tests (Phase 4+) need the full stack, at which point this workflow gets
 # a real Basilisk install step.
+#
+# stable-baselines3 IS installed here (Phase 6, unlike bsk-rl/hapsira):
+# it needs torch/gymnasium/pandas, not Basilisk, so tests/test_training.py's
+# fast synthetic-env tests can actually run in CI instead of skipping --
+# only tests that construct a real CollisionAvoidanceEnv (needing bsk_rl)
+# still skip here.
 #
 # NOTE: an earlier version of this file used `pip install -e . --no-deps`
 # with no explicit deps at all, which meant numpy/scipy were never
@@ -28,14 +34,15 @@ jobs:
           python-version: "3.11"
       - name: Install package
         # --no-deps on the package itself: skip pulling in bsk-rl/
-        # gymnasium/stable-baselines3/sgp4 here, but DO install the real
-        # lightweight deps pc/ and scenario/ actually import at test time
-        # -- including hapsira (targeting.py, Phase 3) and its astropy<7
-        # pin (see pyproject.toml's comment on why). Once env/ tests
-        # (Phase 4+) need the full bsk-rl/Basilisk stack, drop --no-deps
-        # and add a Basilisk install step above.
+        # gymnasium/sgp4 here, but DO install the real lightweight deps
+        # pc/scenario/training actually import at test time -- including
+        # hapsira (targeting.py, Phase 3) and its astropy<7 pin (see
+        # pyproject.toml's comment on why), and stable-baselines3 (Phase 6,
+        # see the note above). Once env/ tests (Phase 4+) need the full
+        # bsk-rl/Basilisk stack, drop --no-deps and add a Basilisk install
+        # step above.
         run: |
-          pip install ruff pytest numpy scipy pandas "astropy<7" hapsira
+          pip install ruff pytest numpy scipy pandas "astropy<7" hapsira stable-baselines3
           pip install -e . --no-deps
       - name: Lint
         run: ruff check src tests
