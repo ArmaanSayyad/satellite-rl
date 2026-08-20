@@ -74,6 +74,7 @@ def test_sample_scenario_geometry_bootstrap_returns_a_real_row():
             "sigma_z": [15.0, 25.0, 35.0],
             "combined_radius": [1.0, 2.0, 3.0],
             "alignment_angle_rad": [0.1, 0.2, 0.3],
+            "native_pc": [1e-10, 1e-6, 1e-3],
         }
     )
     rng = np.random.default_rng(0)
@@ -83,9 +84,9 @@ def test_sample_scenario_geometry_bootstrap_returns_a_real_row():
     # this is the whole point of bootstrap resampling (preserves real
     # joint correlations) versus independent marginal sampling.
     real_rows = {
-        (100.0, 1000.0, 10.0, 15.0, 1.0, 0.1),
-        (200.0, 2000.0, 20.0, 25.0, 2.0, 0.2),
-        (300.0, 3000.0, 30.0, 35.0, 3.0, 0.3),
+        (100.0, 1000.0, 10.0, 15.0, 1.0, 0.1, 1e-10),
+        (200.0, 2000.0, 20.0, 25.0, 2.0, 0.2, 1e-6),
+        (300.0, 3000.0, 30.0, 35.0, 3.0, 0.3, 1e-3),
     }
     for s in samples:
         key = (
@@ -95,6 +96,7 @@ def test_sample_scenario_geometry_bootstrap_returns_a_real_row():
             s["sigma_z"],
             s["combined_radius"],
             s["alignment_angle_rad"],
+            s["native_pc"],
         )
         assert key in real_rows
 

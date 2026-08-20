@@ -299,6 +299,42 @@ phase depends on "trust me, it'll come together later."
   of distorting the "grounded in the real distribution" claim elsewhere)
   worth deciding explicitly rather than defaulting into.
 
+## Phase 7c — Risk-stratified sampling — DONE
+- Implemented the follow-up identified in Phase 7b: `SecondaryScenarioSampler`
+  can now oversample the real event table's risk tail (`high_risk_fraction`,
+  `high_risk_pool_fraction`, both opt-in, default off/backward-compatible),
+  ranked by a new precomputed `native_pc` column added to
+  `geometry_events.csv`. Threads through `CollisionAvoidanceEnv` and
+  (via existing `**env_kwargs` passthrough, no changes needed)
+  `training/train_ppo.py`. 5 new tests
+  (`tests/test_scenario_sampling.py`, skip in the lightweight CI
+  environment same as `test_env.py` -- importing `satellite_rl.env`
+  needs bsk_rl regardless of which submodule is requested) verify the
+  mechanism itself against a synthetic table with exactly-known pool
+  membership.
+- **Verified working correctly, but honestly quantified as insufficient
+  alone**: the default pool (top 5%, 433 real events) correctly contains
+  the single real event that exceeds `pc_threshold=1e-4`, and a 300-
+  episode sweep confirms the mechanism shifts the sampled Pc distribution
+  as designed. But the expected-hit-count for that one event is exact
+  arithmetic (`n * high_risk_fraction / pool_size`, a Bernoulli draw, not
+  something more Monte Carlo sampling would clarify further): at the
+  default pool size and `high_risk_fraction=0.5`, only ~1.15 expected
+  hits per 1,000 episodes. Shrinking the pool raises this roughly
+  linearly (62.5/1,000 at `pool_fraction=0.001`, 8 real events) at the
+  direct cost of training-set diversity within the pool — a real,
+  explicit, quantified tradeoff, not a free fix. Full numbers and the
+  two honest paths forward (much longer training with an aggressive
+  pool and accepted memorization risk, or a lower operational
+  `pc_threshold` matched to real data availability — 22 events exceed
+  1e-6, ~511 exceed 1e-8) in `24-risk-stratified-sampling.md`. Neither
+  chosen here — this phase built and verified the mechanism, not a
+  specific operating point.
+- **Deliverable**: the stratified-sampling mechanism itself (correct,
+  tested, quantified) + exact arithmetic for how to reason about
+  `high_risk_fraction`/`high_risk_pool_fraction` before spending a real
+  training budget on a specific choice.
+
 ## Phase 8 — Open-source polish
 - README, install instructions, worked example notebook, CI green,
   license file (note: MIT/Apache2 recommended for the code itself; the
