@@ -1,0 +1,26 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+venv/
+.DS_Store
+
+# runtime-fetched / regenerated, never committed (see docs/05-datasets.md)
+data/celestrak_cache/
+data/scratch/
+
+# Kelvins CDM dataset (CC-BY-4.0, safe to redistribute -- but train_data.csv
+# alone is 232 MB, over GitHub's 100 MB hard per-file push limit, so it
+# can't be committed directly despite the license allowing it. Fetch via
+# scripts/download_kelvins.py instead; SOURCE.md (provenance/checksum) is
+# the one file from this directory that IS tracked -- see docs/05-datasets.md
+# and docs/12-architecture.md.
+data/kelvins_cdm/*
+!data/kelvins_cdm/SOURCE.md
+
+# training artifacts (Phase 6+)
+*.zip
+runs/
+checkpoints/

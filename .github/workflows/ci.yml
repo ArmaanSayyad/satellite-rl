@@ -1,0 +1,33 @@
+name: CI
+
+# Phase 0: lint + placeholder test only. No Basilisk install here — the
+# pc/ and scenario/ modules (Phase 1-3) don't depend on Basilisk (see
+# docs/12-architecture.md), so CI stays fast and doesn't need it until
+# env/ tests (Phase 4+) are added, at which point this workflow gets a
+# Basilisk install step.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install package
+        # --no-deps: Phase 0's satellite_rl package has no real code yet,
+        # so we skip pulling in bsk-rl/hapsira/stable-baselines3 etc. here.
+        # Once env/ tests (Phase 4+) need the full stack, drop --no-deps
+        # and add a Basilisk install step above.
+        run: |
+          pip install ruff pytest
+          pip install -e . --no-deps
+      - name: Lint
+        run: ruff check src tests
+      - name: Test
+        run: pytest
