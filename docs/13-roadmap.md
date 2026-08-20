@@ -69,7 +69,7 @@ phase depends on "trust me, it'll come together later."
   match. 4 new tests (synthetic-data-only, since the real dataset isn't
   in CI), 27/27 passing.
 
-## Phase 3 — Scenario generator (targeting)
+## Phase 3 — Scenario generator (targeting) — DONE, with one item carried to Phase 4 (Aug 2026)
 - `scenario/targeting.py`: backward-propagation solver (`hapsira`) for a
   secondary object's initial state given a desired TCA encounter geometry.
 - `tests/test_targeting.py`: batch validation of realized-vs-targeted miss
@@ -78,18 +78,44 @@ phase depends on "trust me, it'll come together later."
   how large that drift actually is.
 - **Deliverable**: targeting solver with measured accuracy numbers
   (not assumed accuracy).
+- **Done**: `src/satellite_rl/scenario/targeting.py` implemented and
+  thoroughly validated — geometry-reproduction exact to floating-point
+  precision (20 trials), self-consistency errors floating-point-perfect
+  in the median case with a real, root-caused tail (up to ~170m, from
+  hyperbolic-orbit numerical precision at high sampled relative speed).
+  68/68 tests passing. Real dependency bug found and fixed along the way:
+  `hapsira` 0.18.0 (its only PyPI release) is broken against current
+  astropy; pinned `astropy<7` in `pyproject.toml`, verified `bsk-rl` still
+  works fine with the older astropy too.
+- **Carried to Phase 4, not resolved here**: the Basilisk-fidelity
+  cross-check (how much does real 10th-degree-spherical-harmonics
+  dynamics diverge from the two-body targeting model). Extensive
+  debugging found and fixed 3 real Basilisk API bugs but didn't converge
+  to a trustworthy number — decided to defer this to Phase 4, using
+  `bsk_rl`'s own (already-correct) `DynamicsModel` instead of continuing
+  to hand-roll raw Basilisk scripting. Full honest writeup in
+  `16-targeting-validation-results.md`; `03-scenario-design.md`'s "open
+  technical risk" section updated to match. `scripts/
+  validate_targeting_against_basilisk.py` kept, clearly marked as not
+  yet a trustworthy result, for whoever picks this up in Phase 4.
 
 ## Phase 4 — Custom Gym environment (fixed scenario)
 - `env/satellite.py`, `env/conjunction_dyn.py`, observation/action/reward
   wiring per `06`, `07`, `08`, curriculum stage 1 (single fixed geometry,
   fixed schedule, per `03`/`09`).
+- **Carried over from Phase 3**: the Basilisk-fidelity cross-check
+  (realized-vs-targeted miss distance once the targeting solver's initial
+  conditions are actually flown through `bsk_rl`'s `DynamicsModel`) — do
+  this using the real custom `Satellite`/env being built here, not a
+  separate hand-rolled script; see `16-targeting-validation-results.md`.
 - `gymnasium.utils.env_checker` compliance test.
 - Benchmark single-env step throughput (informs `10-rl-algorithm.md`'s
   compute-budget planning).
 - Sanity check with a random policy — confirm reward signs/magnitudes
   behave as designed (e.g. always-max-Δv policy incurs high fuel penalty,
   never-act policy's terminal risk penalty responds to Pc as expected).
-- **Deliverable**: a working, tested Gym env on the simplest scenario.
+- **Deliverable**: a working, tested Gym env on the simplest scenario,
+  plus the Basilisk-fidelity numbers `03`/`16` deferred here.
 
 ## Phase 5 — Curriculum stages 2–3
 - Sampled geometry (stage 2), then CDM-sequence uncertainty evolution

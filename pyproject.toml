@@ -18,6 +18,13 @@ dependencies = [
   "bsk-rl>=1.3.4",
   "gymnasium>=0.29",
   "hapsira",
+  # hapsira 0.18.0 (its only PyPI release as of Aug 2026) imports
+  # astropy.coordinates.matrix_utilities.matrix_product, which astropy
+  # removed in its 7.x line -- hapsira itself declares no upper bound, so
+  # a plain `pip install hapsira` on a fresh environment pulls a broken
+  # combination. Verified astropy 6.1.7 works, 7.2.2 doesn't; pinning
+  # conservatively to the whole 6.x line. See docs/16-targeting-results.md.
+  "astropy<7",
   "numpy",
   "scipy",
   "stable-baselines3>=2.0",
