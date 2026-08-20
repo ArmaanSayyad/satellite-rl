@@ -42,16 +42,32 @@ phase depends on "trust me, it'll come together later."
   summary (see `05-datasets.md`'s "Corrections" note) based on actually
   opening the file.
 
-## Phase 2 — Data pipeline
+## Phase 2 — Data pipeline — DONE (Aug 2026)
 - `scripts/download_kelvins.py` (Zenodo fetch + checksum).
 - Fit distributions (`scenario/distributions.py`) to Kelvins
   miss-distance/relative-speed/covariance columns, per `03-scenario-
   design.md`.
 - `scripts/fetch_celestrak.py` (rate-limited, cached) — lower priority,
-  needed only once v1.1's background population is in scope.
+  needed only once v1.1's background population is in scope. **Not done
+  yet** — deferred, since it's only needed for the background-object
+  population enhancement (`03-scenario-design.md`), not v1's core loop.
 - **Deliverable**: distribution-fitting script producing plots/summary
   stats, checked into `data/` (fitted parameters, not raw re-derivable
   data) or a results doc.
+- **Done**: `src/satellite_rl/scenario/{kelvins_loader,distributions}.py`
+  implemented. Real finding, reported honestly rather than glossed over:
+  independent per-parameter lognormal fits are statistically poor
+  (KS-rejected for every parameter) and structurally lose real
+  cross-parameter correlation — **pivoted to joint bootstrap resampling**
+  (`sample_scenario_geometry_bootstrap()`) as the recommended method,
+  sampling real event tuples from `data/fitted/geometry_events.csv`
+  instead of independent marginals. Covariance shrink ratio measured at a
+  real, substantial **8.36× median** (first-CDM vs. final-CDM). Schedule
+  library of 5,000 real event CDM-timing sequences extracted for
+  `09-episode-design.md`'s bootstrap-resampled schedules. Full results in
+  `15-distribution-fitting-results.md`; `03-scenario-design.md` updated to
+  match. 4 new tests (synthetic-data-only, since the real dataset isn't
+  in CI), 27/27 passing.
 
 ## Phase 3 — Scenario generator (targeting)
 - `scenario/targeting.py`: backward-propagation solver (`hapsira`) for a
