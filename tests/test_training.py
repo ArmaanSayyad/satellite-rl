@@ -15,6 +15,7 @@ import pytest
 pytest.importorskip("stable_baselines3")
 
 from satellite_rl.training.evaluate import run_episodes
+from satellite_rl.training.full_evaluation import percentile_stats, run_scenario
 from satellite_rl.training.plot_training_curve import load_monitor_csv
 
 
@@ -73,3 +74,41 @@ def test_load_monitor_csv_matches_pandas_direct_read(tmp_path):
     df = load_monitor_csv(monitor_path)
     expected = pd.DataFrame({"r": [1.0], "l": [2], "t": [0.1]})
     pd.testing.assert_frame_equal(df, expected)
+
+
+def test_run_scenario_tracks_first_maneuver_step():
+    # _FakeEnv reports cumulative_fuel_used_ms == step_idx, so every step
+    # "maneuvers" -- first_maneuver_step should be 1, the first step.
+    env = _FakeEnv(episode_length=3)
+    result = run_scenario(env, seed=0, action_fn=lambda obs: np.zeros(3))
+    assert result["first_maneuver_step"] == 1
+    assert result["fuel_ms"] == pytest.approx(3.0)
+    assert result["pc_final"] == pytest.approx(0.001)
+    assert result["reward"] == pytest.approx(-0.3, abs=1e-6)
+
+
+class _FakeNoManeuverEnv(_FakeEnv):
+    """Same bookkeeping as _FakeEnv, but fuel never increases -- checks
+    first_maneuver_step stays None when nothing crosses the deadzone.
+    """
+
+    def step(self, action):
+        self._step_count += 1
+        terminated = self._step_count >= self.episode_length
+        info = {"cumulative_fuel_used_ms": 0.0, "maneuver_count": 0}
+        if terminated:
+            info["pc_final"] = 5e-10
+        return np.zeros(4, dtype=np.float32), 0.0, terminated, False, info
+
+
+def test_run_scenario_first_maneuver_step_none_when_never_acts():
+    env = _FakeNoManeuverEnv(episode_length=3)
+    result = run_scenario(env, seed=0, action_fn=lambda obs: np.zeros(3))
+    assert result["first_maneuver_step"] is None
+
+
+def test_percentile_stats():
+    stats = percentile_stats([1.0, 2.0, 3.0, 4.0, 100.0])
+    assert stats["mean"] == pytest.approx(22.0)
+    assert stats["median"] == pytest.approx(3.0)
+    assert stats["p99"] > stats["p95"] > stats["median"]
