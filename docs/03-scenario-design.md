@@ -148,16 +148,22 @@ Ordered by what we'll actually implement first:
 
 ## Open technical risk to flag honestly
 
-The backward-propagation targeting step (via `hapsira`, two-body/J2) will
-not perfectly match Basilisk's own 10th-degree-spherical-harmonics forward
-propagation (per `02-bsk_rl-architecture.md` §2) — the secondary's actual
-TCA state, once forward-propagated by Basilisk from our computed initial
-condition, will drift slightly from the exact targeted miss distance. For
-v1 this is acceptable (real conjunction geometry has this kind of
-uncertainty anyway, and it's small over the episode timescales involved —
-hours to a few days), but it should be **measured and reported**, not
-assumed away: part of implementing this generator is a validation script
-that checks realized-vs-targeted miss distance across a batch of sampled
-scenarios and reports the error distribution. If the drift turns out
-large, a closed-loop correction (re-target using Basilisk itself, or a
-higher-fidelity two-body propagator) becomes a follow-up task.
+**Status after Phase 3 (`16-targeting-validation-results.md`): still
+genuinely open, not resolved.** The two-body targeting solver itself
+(`scenario/targeting.py`) is fully implemented and validated — self-
+consistency errors are floating-point-perfect in the median case, with a
+real, explained tail (up to ~170m) from hyperbolic-orbit cases at high
+sampled relative speed. What's *not* yet measured is the actual question
+this section originally asked: how much does Basilisk's real 10th-degree-
+spherical-harmonics dynamics diverge from the two-body model used to
+compute the initial condition. A hand-rolled raw-Basilisk validation
+script found and fixed three real bugs (numpy-array initial conditions
+mis-parsing, missing SPICE planet-orientation setup, missing explicit
+`GravBodyVector` assignment) but still didn't converge to a physically
+plausible result. Decision: stop hand-rolling raw Basilisk scripting and
+defer this measurement to Phase 4, where it'll be done properly using
+`bsk_rl`'s own `DynamicsModel` (already correct, since it's a maintained,
+published RL framework) rather than continuing to duplicate that wiring
+by hand. See `16-targeting-validation-results.md` for the full
+investigation — this is not being swept under the rug, just correctly
+resequenced to where it's cheaper and more reliable to answer.

@@ -27,13 +27,15 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install package
-        # --no-deps on the package itself: skip pulling in bsk-rl/hapsira/
+        # --no-deps on the package itself: skip pulling in bsk-rl/
         # gymnasium/stable-baselines3/sgp4 here, but DO install the real
-        # lightweight deps pc/ and scenario/ actually import at test time.
-        # Once env/ tests (Phase 4+) need the full stack, drop --no-deps
+        # lightweight deps pc/ and scenario/ actually import at test time
+        # -- including hapsira (targeting.py, Phase 3) and its astropy<7
+        # pin (see pyproject.toml's comment on why). Once env/ tests
+        # (Phase 4+) need the full bsk-rl/Basilisk stack, drop --no-deps
         # and add a Basilisk install step above.
         run: |
-          pip install ruff pytest numpy scipy pandas
+          pip install ruff pytest numpy scipy pandas "astropy<7" hapsira
           pip install -e . --no-deps
       - name: Lint
         run: ruff check src tests
