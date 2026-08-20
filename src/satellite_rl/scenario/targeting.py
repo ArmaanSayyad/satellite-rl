@@ -59,6 +59,38 @@ def _j2_accel(t0, u_, k):
 
 _J2_PROPAGATOR = CowellPropagator(f=_j2_accel)
 
+_EARTH_MU_M3S2 = Earth.k.to(u.m**3 / u.s**2).value
+_EARTH_R_M = Earth.R.to(u.m).value
+DEFAULT_MIN_ALTITUDE_M = 200e3  # matches bsk_rl's own default min_orbital_radius margin
+
+
+def osculating_periapsis_altitude_m(r_m: np.ndarray, v_m: np.ndarray) -> float:
+    """Periapsis altitude (m above Earth's surface) of the two-body
+    osculating orbit through state (r_m, v_m), via vis-viva + the
+    eccentricity vector -- valid for elliptical AND hyperbolic orbits
+    (periapsis is well-defined in both cases: r_p = a(1-e), with a<0 for
+    e>1). Periapsis is an intrinsic property of the orbit (conserved
+    under two-body dynamics), so evaluating it from any single point on
+    the trajectory -- not just t0 -- gives the same answer; used as a
+    cheap orbit-sanity gate without needing a full propagation.
+
+    See docs/17-env-implementation-notes.md's "no orbit-sanity check"
+    follow-up and docs/18-scenario-generator-hardening.md for why this
+    matters: sampled relative-velocity directions can otherwise produce
+    secondary trajectories that dip below a physically sane altitude.
+    """
+    r = np.asarray(r_m, dtype=float)
+    v = np.asarray(v_m, dtype=float)
+    r_mag = np.linalg.norm(r)
+    v_mag = np.linalg.norm(v)
+    specific_energy = v_mag**2 / 2 - _EARTH_MU_M3S2 / r_mag
+    semi_major_axis = -_EARTH_MU_M3S2 / (2 * specific_energy)
+    h = np.cross(r, v)
+    e_vec = np.cross(v, h) / _EARTH_MU_M3S2 - r / r_mag
+    eccentricity = np.linalg.norm(e_vec)
+    periapsis_radius = semi_major_axis * (1 - eccentricity)
+    return periapsis_radius - _EARTH_R_M
+
 
 @dataclass
 class TargetedScenario:
@@ -154,28 +186,53 @@ def solve_secondary_initial_state_robust(
     relative_speed_ms: float,
     orientation_angle_rad: float,
     rng: np.random.Generator,
-    max_attempts: int = 10,
+    max_attempts: int = 50,
+    min_altitude_m: float = DEFAULT_MIN_ALTITUDE_M,
 ) -> TargetedScenario:
     """Same as `solve_secondary_initial_state`, but retries with a
-    resampled relative-velocity direction on integration failure.
+    resampled relative-velocity direction on (a) integration failure or
+    (b) an unsafe resulting secondary orbit.
 
-    hapsira's Cowell integrator (`solve_secondary_initial_state`'s J2
+    (a) hapsira's Cowell integrator (`solve_secondary_initial_state`'s J2
     propagation) hardcodes `atol=1e-12` internally regardless of the
     problem's actual state magnitude (km-scale positions/velocities) --
     empirically, this causes `RuntimeError: Integration failed` for a
     real, non-negligible fraction of sampled geometries (~4% observed
     over 50 trials, not exclusively at extreme relative speeds -- see
-    docs/17-env-implementation-notes.md). Since the relative-velocity
-    DIRECTION is already a free parameter we're sampling (not something
-    with a real-world-derived distribution -- see the docstring above),
-    resampling it on failure is a legitimate retry, not silently changing
-    the requested scenario's actual physical parameters (miss distance
-    and relative speed magnitude are preserved exactly across retries).
+    docs/17-env-implementation-notes.md).
+
+    (b) A sampled relative-velocity direction can put the secondary on an
+    orbit whose periapsis dips below a physically sane altitude --
+    bsk_rl's own `altitude_valid` aliveness check would fail mid-episode
+    if this reaches the environment (found empirically building
+    Phase 4's env -- see docs/17). Checked here via
+    `osculating_periapsis_altitude_m` against `min_altitude_m` (default
+    matches bsk_rl's own `min_orbital_radius` margin).
+
+    **This second failure mode is common, not a rare edge case** --
+    measured per-attempt valid-orbit rates of only ~18-42% depending on
+    relative speed (higher speed -> lower valid rate; see
+    docs/18-scenario-generator-hardening.md for the full sweep), so
+    `max_attempts` needs real headroom, not just a safety margin. Default
+    of 50 gives >99.99% cumulative success at the worst observed
+    per-attempt rate (~18%). A 100-trial batch across the full realistic
+    parameter range (miss distance 20m-50km, relative speed
+    100m/s-15km/s, lead time 0.5-7 days, `max_attempts=20`) succeeded
+    100/100 -- but a specific harder case (high miss distance + high
+    relative speed) needed more than 10 attempts on one occasion, which
+    is what surfaced this and prompted raising the default.
+
+    Since the relative-velocity DIRECTION is already a free parameter
+    we're sampling (not something with a real-world-derived distribution
+    -- see `solve_secondary_initial_state`'s docstring), resampling it on
+    either failure mode is a legitimate retry, not silently changing the
+    requested scenario's actual physical parameters (miss distance and
+    relative speed magnitude are preserved exactly across retries).
     """
-    last_error = None
+    last_error: Exception = RuntimeError("max_attempts must be >= 1")
     for _attempt in range(max_attempts):
         try:
-            return solve_secondary_initial_state(
+            scenario = solve_secondary_initial_state(
                 ego_r0_m,
                 ego_v0_ms,
                 time_to_tca_s,
@@ -186,6 +243,20 @@ def solve_secondary_initial_state_robust(
             )
         except RuntimeError as exc:
             last_error = exc
+            continue
+
+        periapsis_altitude = osculating_periapsis_altitude_m(
+            scenario.r_sec_t0, scenario.v_sec_t0
+        )
+        if periapsis_altitude < min_altitude_m:
+            last_error = ValueError(
+                f"secondary orbit periapsis altitude {periapsis_altitude:.0f}m "
+                f"below minimum {min_altitude_m:.0f}m"
+            )
+            continue
+
+        return scenario
+
     raise RuntimeError(
         f"solve_secondary_initial_state failed after {max_attempts} attempts "
         f"(miss_distance={miss_distance_m}, relative_speed={relative_speed_ms}): {last_error}"

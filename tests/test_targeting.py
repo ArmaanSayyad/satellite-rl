@@ -1,18 +1,21 @@
 """Tests for satellite_rl.scenario.targeting.
 
-Covers the self-consistency validation this phase can make reliable and
-fast (pure two-body, no Basilisk needed -- CI-friendly). The separate
-question of Basilisk-fidelity drift is NOT covered here -- see
-docs/16-targeting-validation-results.md for why that's deferred to
-Phase 4, and scripts/validate_targeting_against_basilisk.py for the
-current (unresolved, clearly flagged) state of that investigation.
+Covers the self-consistency validation this module can make reliable and
+fast (J2-aware two-body, no Basilisk needed -- CI-friendly), and the
+orbit-sanity/integration-failure retry logic. The separate question of
+Basilisk-fidelity drift was resolved in Phase 4 (real J2 nodal
+precession, not a bug -- see docs/17-env-implementation-notes.md) and the
+TCA-timing-sensitivity follow-up is covered in
+docs/18-scenario-generator-hardening.md, not here.
 """
 
 import numpy as np
 import pytest
 
 from satellite_rl.scenario.targeting import (
+    DEFAULT_MIN_ALTITUDE_M,
     example_leo_orbit,
+    osculating_periapsis_altitude_m,
     solve_secondary_initial_state_robust,
     validate_self_consistency,
 )
@@ -88,3 +91,51 @@ def test_example_leo_orbit_is_physically_reasonable():
     speed_kms = np.linalg.norm(v0) / 1000.0
     assert 400 < altitude_km < 600  # roughly ISS-altitude LEO
     assert 7.0 < speed_kms < 8.0  # roughly circular LEO orbital speed
+
+
+def test_periapsis_altitude_circular_orbit_equals_own_altitude():
+    """For a circular orbit, periapsis = apoapsis = the orbit's own
+    (constant) radius -- an independent sanity check of the vis-viva +
+    eccentricity-vector formula, not just self-consistency.
+    """
+    r0, v0 = example_leo_orbit()
+    expected_altitude = np.linalg.norm(r0) - 6378136.6
+    computed = osculating_periapsis_altitude_m(r0, v0)
+    assert computed == pytest.approx(expected_altitude, rel=1e-6)
+
+
+def test_periapsis_altitude_known_eccentric_orbit():
+    """Hand-constructed eccentric orbit: apoapsis velocity of a
+    r_a=7000km / r_p=6600km ellipse, checked against the closed-form
+    vis-viva periapsis speed -- an independent numerical check, not
+    derived from the function under test.
+    """
+    mu = 3.986004418e14
+    r_a, r_p = 7_000_000.0, 6_600_000.0
+    a = (r_a + r_p) / 2
+    v_at_apoapsis = np.sqrt(mu * (2 / r_a - 1 / a))
+    r0 = np.array([r_a, 0.0, 0.0])
+    v0 = np.array([0.0, v_at_apoapsis, 0.0])
+    computed_altitude = osculating_periapsis_altitude_m(r0, v0)
+    expected_altitude = r_p - 6378136.6
+    assert computed_altitude == pytest.approx(expected_altitude, rel=1e-6)
+
+
+def test_robust_solver_rejects_low_periapsis_scenario():
+    """The exact parameters that crashed Phase 4's environment with a
+    bsk_rl `altitude_valid` failure mid-episode (docs/17) must now yield
+    a scenario whose secondary orbit clears the minimum altitude.
+    """
+    ego_r0, ego_v0 = example_leo_orbit()
+    rng = np.random.default_rng(0)
+    scenario = solve_secondary_initial_state_robust(
+        ego_r0,
+        ego_v0,
+        time_to_tca_s=5 * 86400.0,
+        miss_distance_m=500.0,
+        relative_speed_ms=8000.0,
+        orientation_angle_rad=1.0,
+        rng=rng,
+    )
+    altitude = osculating_periapsis_altitude_m(scenario.r_sec_t0, scenario.v_sec_t0)
+    assert altitude >= DEFAULT_MIN_ALTITUDE_M
