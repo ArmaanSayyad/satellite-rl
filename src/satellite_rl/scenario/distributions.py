@@ -101,6 +101,26 @@ def _add_encounter_geometry(df):
     docs/24-risk-stratified-sampling.md) so downstream sampling can
     stratify by real risk level without recomputing Pc from scratch every
     time a row is drawn.
+
+    Also records `esa_reported_pc = 10**risk` -- ESA's own reported Pc for
+    this event (`risk` is `log10(Pc)`, floored at -30, per docs/14-pc-
+    validation-results.md), straight from the raw CDM row, no
+    recomputation. Added in Phase 7d (docs/25-augmentation-and-threshold-
+    findings.md) after finding `native_pc` materially under-counts risk
+    relative to ESA's own assessment for several real events (our RCS-
+    based combined-radius approximation is a known, documented source of
+    disagreement -- docs/14 already found ~3.5-3.9 decades of std
+    deviation between the two, this is that same known gap surfacing
+    concretely) -- e.g. ESA's single riskiest real event (Pc=0.0207) comes
+    out at `native_pc=6.7e-5` in our own recomputation, ~300x lower and
+    below our own `pc_threshold=1e-4`. Kept alongside `native_pc` rather
+    than replacing it: `native_pc` is what our own Pc pipeline (used
+    identically at training/eval time) would compute for this exact
+    geometry, so it stays the physically self-consistent choice for the
+    actual simulated risk; `esa_reported_pc` is a real, more authoritative
+    external anchor for deciding which real events are worth prioritizing
+    when *selecting* a high-risk pool, independent of our own pipeline's
+    known approximation error.
     """
     rows = []
     n_dropped = 0
@@ -126,6 +146,7 @@ def _add_encounter_geometry(df):
                     "combined_radius": radius,
                     "alignment_angle_rad": float(np.arctan2(geometry.z0, geometry.x0)),
                     "native_pc": float(native_pc),
+                    "esa_reported_pc": float(10.0 ** row["risk"]),
                 }
             )
         except Exception:  # noqa: BLE001 -- counting failures, not debugging one
@@ -270,6 +291,7 @@ def sample_scenario_geometry_bootstrap(geometry_df: pd.DataFrame, rng: np.random
         "combined_radius": float(row["combined_radius"]),
         "alignment_angle_rad": float(row["alignment_angle_rad"]),
         "native_pc": float(row["native_pc"]),
+        "esa_reported_pc": float(row["esa_reported_pc"]),
     }
 
 

@@ -26,7 +26,9 @@ way sigma/combined_radius conceptually could.
 import numpy as np
 import pandas as pd
 
+from ..pc import compute_pc
 from ..scenario.targeting import TargetedScenario, solve_secondary_initial_state_robust
+from ..scenario.tca_refinement import correct_targeting_geometry
 
 MIN_DECISION_INTERVAL_S = 60.0  # merge real CDM timestamps closer together than this
 
@@ -80,6 +82,8 @@ class SecondaryScenarioSampler:
         evolution_df: pd.DataFrame | None = None,
         high_risk_fraction: float = 0.0,
         high_risk_pool_fraction: float = 0.05,
+        high_risk_augment: bool = True,
+        high_risk_precise_targeting: bool = True,
     ) -> None:
         """
         Args:
@@ -91,23 +95,57 @@ class SecondaryScenarioSampler:
                 and covariance pair are sampled each generation instead
                 of using `nominal_tca_s`/a constant sigma.
             high_risk_fraction: probability, per episode, of drawing the
-                geometry row from the elevated-risk pool (top
-                `high_risk_pool_fraction` of `geometry_df` by `native_pc`)
-                instead of uniformly from the full real table. Default
-                0.0 -- unmodified uniform-real-distribution sampling, the
+                geometry row from the elevated-risk pool instead of
+                uniformly from the full real table. Default 0.0 --
+                unmodified uniform-real-distribution sampling, the
                 pre-Phase-7c behavior. See docs/24-risk-stratified-
                 sampling.md: real actionable-risk events are ~1-in-8,672
-                (docs/23-anisotropic-covariance-fix.md), so uniform
-                sampling essentially never exposes training to one in any
-                practical timestep budget. This is a deliberate,
-                explicit, tunable departure from the unmodified real
-                distribution -- the elevated pool is still 100% real
-                events, just resampled with a different (documented, not
-                silent) weighting.
+                by our own recomputed `native_pc`, too rare for uniform
+                sampling to expose training to one in any practical
+                budget. This is a deliberate, explicit, tunable departure
+                from the unmodified real distribution -- the elevated
+                pool is still 100% real events, just resampled with a
+                different (documented, not silent) weighting.
             high_risk_pool_fraction: size of the elevated-risk pool, as a
-                fraction of `geometry_df`'s rows (ranked by `native_pc`,
-                not a value threshold -- avoids ties when most rows sit
-                at Pc=0). Only used when `high_risk_fraction > 0`.
+                fraction of `geometry_df`'s rows -- ranked by
+                `max(native_pc, esa_reported_pc)` (not a value threshold,
+                which would tie on the majority of rows sitting at
+                Pc=0; and not `native_pc` alone, since docs/25-
+                augmentation-and-threshold-findings.md found our own
+                recomputed Pc materially under-counts risk relative to
+                ESA's own reported assessment for several real events --
+                using the max of both is a safety-oriented choice: either
+                signal suggesting real risk is enough to include a row).
+                Only used when `high_risk_fraction > 0`.
+            high_risk_augment: when drawing from the elevated-risk pool,
+                perturb the drawn row's miss vector by resampling it from
+                the SAME Gaussian its own reported covariance defines
+                (`N((x0, z0), diag(sigma_x^2, sigma_z^2))`) instead of
+                using its exact real (x0, z0) every time. This is not an
+                invented perturbation: the covariance IS the real event's
+                own statement of "here is the distribution of plausible
+                true offsets consistent with this measurement" -- so a
+                draw from it is a genuinely different, still-real-
+                measurement-consistent encounter, not a synthetic one.
+                Without this, the elevated pool -- a few hundred rows at
+                most -- would produce the exact same handful of geometries
+                every time it's drawn, risking the policy memorizing those
+                specific instances rather than learning to generalize.
+                Default True; only takes effect when `high_risk_fraction
+                > 0`. See docs/25 for the empirical validation (how many
+                actionable variants this produces, and how dissimilar).
+            high_risk_precise_targeting: when drawing from the elevated-
+                risk pool, correct the J2 targeting solver's initial
+                state via `tca_refinement.correct_targeting_geometry`
+                (1-3 extra Basilisk calls, ~1.5-3s) so the actual
+                simulated encounter lands near the intended small miss
+                distance instead of ~100-200m off (docs/26-precise-
+                targeting.md: this error is invisible at the km-scale
+                miss distances every other draw uses, but swamps the
+                tens-of-meters targets high-risk real events need).
+                Default True; only takes effect when `high_risk_fraction
+                > 0`, since that's the only regime where target miss
+                distances are small enough for this to matter.
         """
         if (schedule_library is None) != (evolution_df is None):
             raise ValueError("schedule_library and evolution_df must be provided together")
@@ -124,10 +162,15 @@ class SecondaryScenarioSampler:
         self.rng = rng
         self.generation = 0
         self.high_risk_fraction = high_risk_fraction
+        self.high_risk_augment = high_risk_augment
+        self.high_risk_precise_targeting = high_risk_precise_targeting
         self.high_risk_df = None
         if high_risk_fraction > 0.0:
             n_top = max(1, int(len(geometry_df) * high_risk_pool_fraction))
-            self.high_risk_df = geometry_df.nlargest(n_top, "native_pc").reset_index(drop=True)
+            pool_rank = geometry_df[["native_pc", "esa_reported_pc"]].max(axis=1)
+            self.high_risk_df = (
+                geometry_df.loc[pool_rank.nlargest(n_top).index].reset_index(drop=True)
+            )
         self._cached_generation: int | None = None
         self._cached_scenario: TargetedScenario | None = None
         self._cached_sample: dict | None = None
@@ -154,15 +197,52 @@ class SecondaryScenarioSampler:
         drawing_high_risk = self.high_risk_df is not None and self.rng.random() < self.high_risk_fraction
         pool = self.high_risk_df if drawing_high_risk else self.geometry_df
         row = pool.iloc[self.rng.integers(0, len(pool))]
+        miss_distance = float(row["miss_distance"])
+        alignment_angle_rad = float(row["alignment_angle_rad"])
+        sigma_x = float(row["sigma_x"])
+        sigma_z = float(row["sigma_z"])
+        combined_radius = float(row["combined_radius"])
+        native_pc = float(row["native_pc"])
+        augmented = False
+
+        if drawing_high_risk and self.high_risk_augment:
+            # Posterior-resampling augmentation (docs/25-augmentation-and-
+            # threshold-findings.md): this row's covariance IS its own
+            # statement of "here is the distribution of plausible true
+            # miss-vector offsets consistent with this real measurement" --
+            # (sigma_x, sigma_z) describes uncertainty about where the
+            # real encounter actually was, not noise we're inventing. A
+            # fresh draw from that same distribution is a different,
+            # equally real-measurement-consistent encounter, not a
+            # synthetic one. Without this, the elevated pool (a few
+            # hundred rows at most) would produce the exact same handful
+            # of geometries every time it's drawn -- risking the policy
+            # memorizing those specific instances.
+            x0 = miss_distance * np.cos(alignment_angle_rad)
+            z0 = miss_distance * np.sin(alignment_angle_rad)
+            x0 = self.rng.normal(x0, sigma_x)
+            z0 = self.rng.normal(z0, sigma_z)
+            miss_distance = float(np.hypot(x0, z0))
+            alignment_angle_rad = float(np.arctan2(z0, x0))
+            native_r_rel = np.array([x0, z0, 0.0])
+            native_v_rel = np.array([0.0, 0.0, 1.0])
+            native_cov = np.diag([sigma_x**2, sigma_z**2, 1e-12])
+            native_pc = float(
+                compute_pc(native_r_rel, native_v_rel, native_cov, combined_radius, method="chan")
+            )
+            augmented = True
+
         sample = {
-            "miss_distance": float(row["miss_distance"]),
+            "miss_distance": miss_distance,
             "relative_speed": float(row["relative_speed"]),
-            "sigma_x": float(row["sigma_x"]),
-            "sigma_z": float(row["sigma_z"]),
-            "combined_radius": float(row["combined_radius"]),
-            "alignment_angle_rad": float(row["alignment_angle_rad"]),
-            "native_pc": float(row["native_pc"]),
+            "sigma_x": sigma_x,
+            "sigma_z": sigma_z,
+            "combined_radius": combined_radius,
+            "alignment_angle_rad": alignment_angle_rad,
+            "native_pc": native_pc,
             "drawn_from_high_risk_pool": drawing_high_risk,
+            "augmented": augmented,
+            "precise_targeting_error_m": None,
         }
         # The real event's own miss-vector-vs-covariance alignment, not a
         # fresh uniform-random draw -- see docs/23-anisotropic-covariance-
@@ -177,6 +257,10 @@ class SecondaryScenarioSampler:
         # since v_rel's direction here is independently sampled below),
         # just the relative geometry that actually determines Pc.
         orientation_angle_rad = sample["alignment_angle_rad"]
+        # solve_secondary_initial_state_robust's own default max_attempts
+        # (3,000, raised in Phase 7e -- docs/26-precise-targeting.md) is
+        # what makes this reliable for real events with relative speeds
+        # well above typical LEO orbital speed; not overridden here.
         scenario = solve_secondary_initial_state_robust(
             self.ego_r0,
             self.ego_v0,
@@ -186,6 +270,22 @@ class SecondaryScenarioSampler:
             orientation_angle_rad,
             self.rng,
         )
+
+        if drawing_high_risk and self.high_risk_precise_targeting:
+            # docs/26-precise-targeting.md: the J2-only solver above is
+            # only accurate to ~100-200m at these lead times, regardless
+            # of target size -- invisible for the km-scale miss distances
+            # every other draw uses, but it swamps the tens-of-meters
+            # targets real high-risk events need. Corrects r_sec_t0/v_sec
+            # _t0 via 1-3 extra Basilisk calls (~1.5-3s total) so the
+            # ACTUAL simulated encounter lands near the intended one, not
+            # just the J2 solver's approximation of it. Gated to pool
+            # draws specifically -- this cost is real and not worth
+            # paying on every episode, only where precision matters.
+            scenario, diagnostics = correct_targeting_geometry(
+                self.ego_r0, self.ego_v0, scenario, nominal_tca_s
+            )
+            sample["precise_targeting_error_m"] = diagnostics["final_error_m"]
 
         if self.evolution_df is not None:
             evo_row = self.evolution_df.iloc[self.rng.integers(0, len(self.evolution_df))]

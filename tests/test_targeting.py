@@ -13,8 +13,11 @@ import numpy as np
 import pytest
 
 from satellite_rl.scenario.targeting import (
+    DEFAULT_MAX_APOAPSIS_ALTITUDE_M,
     DEFAULT_MIN_ALTITUDE_M,
     example_leo_orbit,
+    osculating_apoapsis_altitude_m,
+    osculating_eccentricity,
     osculating_periapsis_altitude_m,
     solve_secondary_initial_state_robust,
     validate_self_consistency,
@@ -139,3 +142,93 @@ def test_robust_solver_rejects_low_periapsis_scenario():
     )
     altitude = osculating_periapsis_altitude_m(scenario.r_sec_t0, scenario.v_sec_t0)
     assert altitude >= DEFAULT_MIN_ALTITUDE_M
+
+
+def test_eccentricity_circular_orbit_is_zero():
+    r0, v0 = example_leo_orbit()
+    assert osculating_eccentricity(r0, v0) == pytest.approx(0.0, abs=1e-6)
+
+
+def test_eccentricity_known_eccentric_orbit():
+    # Same r_a=7000km/r_p=6600km ellipse as
+    # test_periapsis_altitude_known_eccentric_orbit, cross-checked against
+    # the standard e = (r_a - r_p) / (r_a + r_p) closed form.
+    r_a, r_p = 7_000_000.0, 6_600_000.0
+    mu = 3.986004418e14
+    a = (r_a + r_p) / 2
+    v_at_apoapsis = np.sqrt(mu * (2 / r_a - 1 / a))
+    r0 = np.array([r_a, 0.0, 0.0])
+    v0 = np.array([0.0, v_at_apoapsis, 0.0])
+    expected = (r_a - r_p) / (r_a + r_p)
+    assert osculating_eccentricity(r0, v0) == pytest.approx(expected, rel=1e-6)
+
+
+def test_eccentricity_hyperbolic_orbit_exceeds_one():
+    # Escape velocity at this radius is ~10,900 m/s -- well above it is
+    # unambiguously hyperbolic.
+    r0 = np.array([6_878_136.6, 0.0, 0.0])
+    v0 = np.array([0.0, 15_000.0, 0.0])
+    assert osculating_eccentricity(r0, v0) > 1.0
+
+
+def test_robust_solver_rejects_hyperbolic_scenario():
+    """docs/26-precise-targeting.md: the exact real-event parameters that
+    produced a hyperbolic secondary "orbit" (periapsis altitude looked
+    fine at 487km, but eccentricity was 7.03) must now be rejected --
+    every returned scenario's secondary orbit must be bound AND within a
+    realistic LEO apoapsis ceiling (eccentricity alone wasn't enough, per
+    docs/26 -- see the osculating_apoapsis_altitude_m tests below for the
+    apoapsis check's own correctness)."""
+    ego_r0, ego_v0 = example_leo_orbit()
+    rng = np.random.default_rng(0)
+    scenario = solve_secondary_initial_state_robust(
+        ego_r0,
+        ego_v0,
+        time_to_tca_s=0.2 * 86400.0,
+        miss_distance_m=237.0,
+        relative_speed_ms=14_919.0,
+        orientation_angle_rad=1.0,
+        rng=rng,
+        max_attempts=3000,
+    )
+    assert osculating_eccentricity(scenario.r_sec_t0, scenario.v_sec_t0) < 1.0
+    assert (
+        osculating_apoapsis_altitude_m(scenario.r_sec_t0, scenario.v_sec_t0)
+        <= DEFAULT_MAX_APOAPSIS_ALTITUDE_M
+    )
+
+
+def test_apoapsis_altitude_circular_orbit_equals_own_altitude():
+    r0, v0 = example_leo_orbit()
+    expected_altitude = np.linalg.norm(r0) - 6378136.6
+    assert osculating_apoapsis_altitude_m(r0, v0) == pytest.approx(expected_altitude, rel=1e-6)
+
+
+def test_apoapsis_altitude_known_eccentric_orbit():
+    # Same r_a=7000km/r_p=6600km ellipse as the periapsis/eccentricity
+    # tests above -- apoapsis should reproduce r_a exactly.
+    mu = 3.986004418e14
+    r_a, r_p = 7_000_000.0, 6_600_000.0
+    a = (r_a + r_p) / 2
+    v_at_apoapsis = np.sqrt(mu * (2 / r_a - 1 / a))
+    r0 = np.array([r_a, 0.0, 0.0])
+    v0 = np.array([0.0, v_at_apoapsis, 0.0])
+    computed_altitude = osculating_apoapsis_altitude_m(r0, v0)
+    expected_altitude = r_a - 6378136.6
+    assert computed_altitude == pytest.approx(expected_altitude, rel=1e-6)
+
+
+def test_apoapsis_altitude_flags_bound_but_unrealistic_orbit():
+    # eccentricity=0.982-like case from docs/26: bound (e<1) with a
+    # perfectly fine periapsis, but an apoapsis far beyond any realistic
+    # LEO regime -- this is exactly what osculating_eccentricity alone
+    # can't catch, and what max_apoapsis_altitude_m exists to reject.
+    mu = 3.986004418e14
+    r_p = 6_378_136.6 + 400_000.0  # 400km periapsis altitude, fine on its own
+    r_a = 73_584_000.0  # near-GEO apoapsis, per the real event found in docs/26
+    a = (r_a + r_p) / 2
+    v_at_periapsis = np.sqrt(mu * (2 / r_p - 1 / a))
+    r0 = np.array([r_p, 0.0, 0.0])
+    v0 = np.array([0.0, v_at_periapsis, 0.0])
+    assert osculating_eccentricity(r0, v0) < 1.0  # bound -- (c) alone wouldn't catch this
+    assert osculating_apoapsis_altitude_m(r0, v0) > DEFAULT_MAX_APOAPSIS_ALTITUDE_M

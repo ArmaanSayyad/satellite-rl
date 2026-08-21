@@ -78,6 +78,8 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
         targeting_seed: int = 0,
         high_risk_fraction: float = 0.0,
         high_risk_pool_fraction: float = 0.05,
+        high_risk_augment: bool = True,
+        high_risk_precise_targeting: bool = True,
         **kwargs,
     ) -> None:
         """
@@ -125,16 +127,26 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
                 velocity-direction sampling (see scenario/targeting.py),
                 and, when `sample_geometry=True`, also for which real
                 event/schedule/covariance pair gets sampled each reset.
-            high_risk_fraction, high_risk_pool_fraction: only used when
-                `sample_geometry=True`. Probability of drawing the
-                geometry row from the elevated-risk pool (top
-                `high_risk_pool_fraction` of real events by `native_pc`)
-                instead of uniformly from the full real table. Default
-                0.0 -- unmodified real-distribution sampling. See
-                docs/24-risk-stratified-sampling.md: real actionable-risk
-                events are ~1-in-8,672 (docs/23), so uniform sampling
-                essentially never exposes training to one; this is a
-                deliberate, explicit, tunable departure from the
+            high_risk_fraction, high_risk_pool_fraction, high_risk_augment,
+            high_risk_precise_targeting:
+                only used when `sample_geometry=True`. Probability of
+                drawing the geometry row from the elevated-risk pool
+                (top `high_risk_pool_fraction` of real events, ranked by
+                the more alarming of our own recomputed risk or ESA's own
+                reported one) instead of uniformly from the full real
+                table; whether pool draws get resampled within their own
+                real reported measurement uncertainty for variety
+                (`high_risk_augment`, default True); whether pool draws
+                get their targeting solve corrected against real Basilisk
+                dynamics so small intended miss distances are actually
+                achieved (`high_risk_precise_targeting`, default True --
+                see docs/26-precise-targeting.md). Default
+                `high_risk_fraction=0.0` -- unmodified real-distribution
+                sampling. See docs/25-augmentation-and-threshold-
+                findings.md and docs/24-risk-stratified-sampling.md: real
+                actionable-risk events are rare enough that uniform
+                sampling essentially never exposes training to one; this
+                is a deliberate, explicit, tunable departure from the
                 unmodified distribution, not a silent one.
             **kwargs: passed to GeneralSatelliteTasking (e.g. sim_rate).
         """
@@ -189,6 +201,8 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
                     evolution_df=evolution_df,
                     high_risk_fraction=high_risk_fraction,
                     high_risk_pool_fraction=high_risk_pool_fraction,
+                    high_risk_augment=high_risk_augment,
+                    high_risk_precise_targeting=high_risk_precise_targeting,
                 )
             else:
                 self._sampler = SecondaryScenarioSampler(
@@ -199,6 +213,8 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
                     nominal_tca_s=schedule_s[0],
                     high_risk_fraction=high_risk_fraction,
                     high_risk_pool_fraction=high_risk_pool_fraction,
+                    high_risk_augment=high_risk_augment,
+                    high_risk_precise_targeting=high_risk_precise_targeting,
                 )
             self._fixed_sigma_m = None
             self._fixed_combined_radius_m = None
