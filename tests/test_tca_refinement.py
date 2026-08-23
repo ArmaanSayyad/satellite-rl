@@ -87,8 +87,13 @@ def test_refine_tca_returns_expected_keys_and_types():
 # regime, per env/scenario_sampling.py) converges in 1-3; longer lead
 # times converge more slowly (Sun's third-body perturbation makes the
 # achieved-vs-requested relationship less linear over a longer arc) -- a
-# 3-day case needed 7 (monotonically improving: 97m/15m/2.3m/0.36m at
-# iterations 4-7, not diverging, just slow).
+# 3-day case needed 19, error shrinking by a steady ~1.69x per iteration
+# (11735m/5004m/.../221m/.../46m/.../3.4m/1.2m/0.70m at iterations
+# 1/2/.../8/.../11/.../16/17/18/19 -- geometrically slow, never
+# diverging or oscillating). Measured against the raw-3D error metric
+# (see correct_targeting_geometry's docstring) -- an earlier 2D-
+# projected version of this metric had a blind spot that made this same
+# case falsely look converged by iteration 7 (docs/26).
 @pytest.mark.parametrize(
     "miss_m,angle_rad,speed_ms,tca_days,seed,max_expected_iters",
     [
@@ -96,7 +101,7 @@ def test_refine_tca_returns_expected_keys_and_types():
         (10.0, 2.5, 7500.0, 0.2, 2, 3),
         (642.0, 5.5, 6000.0, 0.2, 5, 3),
         (98.45, 0.433, 6260.23, 0.2, 1010, 3),  # oscillation edge case found during development
-        (38.0, 1.0, 8000.0, 3.0, 6, 8),  # longer lead time, converges slower
+        (38.0, 1.0, 8000.0, 3.0, 6, 20),  # longer lead time, converges slower
     ],
 )
 def test_correct_targeting_geometry_converges_to_sub_meter_accuracy(
@@ -153,7 +158,7 @@ def test_correct_targeting_geometry_improves_on_uncorrected_j2_solve():
     basis = encounter_plane_basis(v_rel_target)
     target_2d = basis.T @ (scenario.r_sec_tca_target - scenario.r_ego_tca)
 
-    times_s, r1, r2 = _fly_passive_pair(
+    times_s, r1, _v1, r2, _v2 = _fly_passive_pair(
         ego_r0, ego_v0, scenario.r_sec_t0, scenario.v_sec_t0, nominal_tca_s, sim_rate_s=2.0
     )
     idx = int(np.argmin(np.abs(times_s - nominal_tca_s)))

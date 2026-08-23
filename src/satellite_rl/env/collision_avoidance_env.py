@@ -258,6 +258,24 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
             time_limit=lambda: self.schedule_s[0] + 1000.0,
             terminate_on_time_limit=False,
             failure_penalty=-1000.0,  # safety-net signal for a real ConjunctionDynModel collision, see docs/09
+            # Phase 7e (docs/26-precise-targeting.md): `utc_init` in each
+            # satellite's own sat_args above does NOT reach the world's
+            # SPICE setup -- bsk_rl's GeneralSatelliteTasking.reset()
+            # reads `self.world_args["utc_init"]` unconditionally
+            # (gym.py), ignoring any per-satellite sat_args value. Without
+            # this, world_args defaulted to bsk_rl's own built-in epoch
+            # (2000/06/23, not our intended 2018-09-29) -- silently, for
+            # the entire project until this was found: real conjunction
+            # geometry was never affected (both satellites experienced
+            # the same wrong epoch, so relative geometry was internally
+            # consistent), but it caused a genuine ~2.5km/0.2-day
+            # divergence between the real simulation and any EXTERNAL
+            # probe (e.g. tca_refinement.py's _fly_passive_pair) that
+            # correctly used 2018-09-29 -- via the Sun's position being
+            # ~94 degrees off between the two, small but real given solar
+            # gravity is a third-body perturbation, not the dominant
+            # term.
+            world_args={"utc_init": UTC_INIT},
             **kwargs,
         )
         self.schedule_index = 0

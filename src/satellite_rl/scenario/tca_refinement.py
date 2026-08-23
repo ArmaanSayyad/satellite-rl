@@ -47,7 +47,6 @@ from Basilisk.simulation import spacecraft
 from Basilisk.utilities import SimulationBaseClass, macros, simIncludeGravBody
 from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
 
-from ..pc.geometry import encounter_plane_basis
 from .targeting import TargetedScenario, propagate_state
 
 UTC_INIT = "2018 SEP 29 21:00:00.000 (UTC)"
@@ -60,7 +59,7 @@ def _fly_passive_pair(
     v2_0: np.ndarray,
     duration_s: float,
     sim_rate_s: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Propagate two passive spacecraft under full Basilisk dynamics
     (10th-degree spherical harmonics + SPICE Earth orientation + solar
     third-body gravity, matching bsk_rl's own `WorldModel.setup_gravity_
@@ -77,6 +76,26 @@ def _fly_passive_pair(
     reporting near-zero error against its own (wrong) reference. Fixed by
     matching bsk_rl's gravity-body setup exactly, including the ephemeris
     data path and `zeroBase` casing, not just the same gravity degree.
+
+    Also fixed, same Phase: a SEPARATE and much larger bug -- `utc_init`
+    never actually reached the real environment's SPICE setup at all (see
+    docs/26: it needs to flow through `GeneralSatelliteTasking`'s
+    `world_args`, not per-satellite `sat_args`, which is silently
+    ignored). The real environment was using bsk_rl's own built-in
+    default epoch, ~18 years off from this function's intended one --
+    putting the Sun ~94 degrees off in direction between the two, which
+    (small but real, since solar gravity is a third-body term) caused a
+    stable ~2.5km/0.2-day divergence even for a single satellite with no
+    correction loop involved at all. Fixed in
+    env/collision_avoidance_env.py, not here -- this function was already
+    using the correct epoch throughout.
+
+    Returns (times_s, r1, v1, r2, v2) -- positions AND velocities for
+    both objects. Velocities are needed by `correct_targeting_geometry`
+    to rebuild the encounter-plane basis from the ACHIEVED relative
+    velocity at each check, not a frozen target-time one (see that
+    function's docstring for why this matters -- a third Phase 7e bug,
+    found after fixing the two above still didn't fully close the gap).
     """
     sim_task_name = "simTask"
     sim_process_name = "simProcess"
@@ -124,9 +143,11 @@ def _fly_passive_pair(
 
     times_s = np.array(rec1.times()) * macros.NANO2SEC
     r1 = np.array(rec1.r_BN_N)
+    v1 = np.array(rec1.v_BN_N)
     r2 = np.array(rec2.r_BN_N)
+    v2 = np.array(rec2.v_BN_N)
     grav_factory.unloadSpiceKernels()
-    return times_s, r1, r2
+    return times_s, r1, v1, r2, v2
 
 
 def refine_tca(
@@ -165,7 +186,7 @@ def refine_tca(
         margin_s = max(300.0, 0.01 * nominal_tca_s)
     duration_s = nominal_tca_s + margin_s
 
-    times_s, r1, r2 = _fly_passive_pair(ego_r0, ego_v0, sec_r0, sec_v0, duration_s, sim_rate_s)
+    times_s, r1, _v1, r2, _v2 = _fly_passive_pair(ego_r0, ego_v0, sec_r0, sec_v0, duration_s, sim_rate_s)
     separation = np.linalg.norm(r1 - r2, axis=1)
 
     i_min = int(np.argmin(separation))
@@ -194,7 +215,7 @@ def correct_targeting_geometry(
     ego_v0: np.ndarray,
     scenario: TargetedScenario,
     nominal_tca_s: float,
-    max_iters: int = 8,
+    max_iters: int = 24,
     tol_m: float = 1.0,
     sim_rate_s: float = 2.0,
 ) -> tuple[TargetedScenario, dict]:
@@ -232,10 +253,14 @@ def correct_targeting_geometry(
             env/scenario_sampling.py). Longer lead times converge more
             slowly (the Sun's third-body perturbation makes the achieved-
             vs-requested relationship less purely linear over a longer
-            arc) -- a 3-day-lead 38m case needed 7 iterations to reach
-            sub-meter accuracy (97m error at 4 iterations, 15m at 5, 2.3m
-            at 6, 0.36m at 7 -- converging, not diverging, just slowly).
-            Default of 8 covers both regimes with one setting.
+            arc) -- a 3-day-lead 38m case measured (against the honest raw-
+            3D error metric, see the comment below) a steady geometric
+            convergence, error shrinking by a ~1.69x factor each
+            iteration (11735m at iter 1 down to 221m at iter 8, 46m at
+            iter 11, 3.4m at iter 16, sub-meter only by iter 19 --
+            converging the whole way, never diverging or oscillating,
+            just geometrically slow). Default of 24 covers both regimes
+            with one setting and margin to spare on the slow case.
         tol_m: stop once the achieved miss vector is within this many
             meters of the target.
         sim_rate_s: Basilisk recorder resolution -- 2s gives sufficient
@@ -249,31 +274,46 @@ def correct_targeting_geometry(
         `n_basilisk_calls` and `final_error_m` (achieved-vs-target miss
         vector distance for the returned state).
     """
+    # Work in raw 3D vectors throughout -- NOT a 2D encounter-plane
+    # projection. An earlier version of this function projected onto
+    # `encounter_plane_basis(v_rel_target)` (the basis implied by the
+    # ORIGINAL target relative velocity) and measured/corrected error
+    # there. That's a real bug, found in Phase 7e (docs/26): the ACHIEVED
+    # relative velocity at the real TCA can rotate meaningfully from
+    # v_rel_target (J2 + solar perturbation over the propagation), and
+    # projecting onto a basis perpendicular to the WRONG (stale) velocity
+    # direction can hide most of the true 3D error in exactly the
+    # "out-of-plane" component that projection discards -- measured
+    # concretely: a case with 3153.8m of actual 3D separation error
+    # projected down to just 0.31m of apparent 2D error, because ~all of
+    # that 3153.8m happened to lie along the (rotated) achieved velocity
+    # direction, invisible to a check built from the stale target basis.
+    # Comparing raw 3D vectors directly has no such blind spot.
+    target_r_rel = scenario.r_sec_tca_target - scenario.r_ego_tca
     v_rel_target = scenario.v_sec_tca_target - scenario.v_ego_tca
-    basis = encounter_plane_basis(v_rel_target)
-    target_2d = basis.T @ (scenario.r_sec_tca_target - scenario.r_ego_tca)
 
     r_sec_t0, v_sec_t0 = scenario.r_sec_t0, scenario.v_sec_t0
-    current_request_2d = target_2d.copy()
+    current_request_r_rel = target_r_rel.copy()
     best_error_m = np.inf
     best_r_sec_t0, best_v_sec_t0 = r_sec_t0, v_sec_t0
     n_calls = 0
 
     for _ in range(max_iters):
-        times_s, r1, r2 = _fly_passive_pair(ego_r0, ego_v0, r_sec_t0, v_sec_t0, nominal_tca_s, sim_rate_s)
+        times_s, r1, _v1, r2, _v2 = _fly_passive_pair(
+            ego_r0, ego_v0, r_sec_t0, v_sec_t0, nominal_tca_s, sim_rate_s
+        )
         n_calls += 1
         idx = int(np.argmin(np.abs(times_s - nominal_tca_s)))
-        achieved_2d = basis.T @ (r2[idx] - r1[idx])
-        error_m = float(np.linalg.norm(achieved_2d - target_2d))
+        achieved_r_rel = r2[idx] - r1[idx]
+        error_m = float(np.linalg.norm(achieved_r_rel - target_r_rel))
         if error_m < best_error_m:
             best_error_m = error_m
             best_r_sec_t0, best_v_sec_t0 = r_sec_t0, v_sec_t0
         if error_m < tol_m:
             break
-        bias = achieved_2d - current_request_2d
-        current_request_2d = target_2d - bias
-        r_rel_corrected = basis @ current_request_2d
-        r_sec_tca_corrected = scenario.r_ego_tca + r_rel_corrected
+        bias = achieved_r_rel - current_request_r_rel
+        current_request_r_rel = target_r_rel - bias
+        r_sec_tca_corrected = scenario.r_ego_tca + current_request_r_rel
         v_sec_tca_corrected = scenario.v_ego_tca + v_rel_target
         r_sec_t0, v_sec_t0 = propagate_state(r_sec_tca_corrected, v_sec_tca_corrected, -nominal_tca_s)
 
