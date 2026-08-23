@@ -212,3 +212,28 @@ simulated with the miss distance they were actually meant to have. The
 scenario generator can now produce genuinely high-risk (`Pc > 1e-4`)
 training episodes from real data — the capability the last several
 phases were building toward.
+
+## Correction: `max_attempts=200,000` (above) was revised down to 20,000
+
+Found on the first real training attempt after this phase, not caught
+by any test: a real event with `relative_speed_ms=15,850` (nearly 2x
+circular LEO speed) crashed training when `solve_secondary_initial_
+state_robust` exhausted its full attempt budget and raised. This isn't
+a retry-budget problem — confirmed analytically, not just empirically:
+even the most favorable possible relative-velocity direction for that
+event implies an apoapsis around 3,344km, still past the 2,000km
+ceiling, so **no** direction can satisfy every orbit-realism check at
+once. About 3% of the real event table (262/8,672, by the same
+analytic check) is similarly infeasible under our LEO-only conjunction
+model — real data outside what this project represents, not a bug.
+
+Two fixes: `SecondaryScenarioSampler` now catches this specific
+`RuntimeError` and resamples a different row (bounded at 5 attempts)
+instead of letting it crash the caller — matching the same "if this
+specific draw doesn't work, try another" pattern the retry loop itself
+already uses one level down. And `max_attempts` was lowered from
+200,000 to 20,000: exhausting the full 200,000 on a genuinely
+infeasible row measured ~29s, while the hardest *confirmed-feasible*
+case succeeds comfortably within 3,000 — 20,000 keeps a real ~7x margin
+over that while failing ~10x faster (~3s) when a row truly can't be
+placed, so a resample doesn't cost 29 seconds every time it's needed.

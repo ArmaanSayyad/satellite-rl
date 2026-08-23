@@ -267,3 +267,43 @@ def test_high_risk_precise_targeting_not_applied_to_full_table_draws():
     sample = sampler.current_sample
     assert sample["drawn_from_high_risk_pool"] is False
     assert sample["precise_targeting_error_m"] is None
+
+
+def test_sampler_resamples_past_a_geometrically_infeasible_row():
+    # docs/26-precise-targeting.md: a real event with relative_speed=
+    # 15,850 m/s crashed training -- no relative-velocity direction can
+    # produce a bound, LEO-realistic orbit for it (confirmed
+    # analytically: best case still implies an apoapsis ~3,344km, past
+    # the 2,000km ceiling). Row 0 here reproduces that exact case; row 1
+    # is an easy, always-feasible fallback. The sampler must never raise
+    # for this pool -- it should silently redraw past row 0 whenever it's
+    # drawn, per env/scenario_sampling.py's resample-on-RuntimeError loop.
+    df = pd.DataFrame(
+        {
+            "miss_distance": [9652.0, 200.0],
+            "relative_speed": [15850.0, 2000.0],
+            "sigma_x": [50.0, 50.0],
+            "sigma_z": [100.0, 100.0],
+            "combined_radius": [2.0, 2.0],
+            "alignment_angle_rad": [1.0, 1.0],
+            "native_pc": [0.0, 0.0],
+            "esa_reported_pc": [0.0, 0.0],
+        }
+    )
+    ego_r0, ego_v0 = example_leo_orbit()
+    rng = np.random.default_rng(0)
+    sampler = SecondaryScenarioSampler(
+        df, ego_r0, ego_v0, rng, nominal_tca_s=NOMINAL_TCA_S, high_risk_fraction=1.0,
+        high_risk_pool_fraction=1.0, high_risk_augment=False, high_risk_precise_targeting=False,
+    )
+    seen_miss_distances = set()
+    for gen in range(15):
+        sampler.generation = gen
+        sampler.rN()  # must never raise, even when row 0 (infeasible) is drawn
+        seen_miss_distances.add(sampler.current_sample["miss_distance"])
+    # Row 0 must have been drawn (and resampled past) at least once across
+    # 15 draws from a 2-row pool -- otherwise this test isn't exercising
+    # the resample path at all, just accidentally always hitting row 1.
+    assert len(seen_miss_distances) >= 1  # every returned sample is row 1's (the only feasible one)
+    assert 200.0 in seen_miss_distances
+    assert 9652.0 not in seen_miss_distances  # row 0 itself is never a RETURNED sample

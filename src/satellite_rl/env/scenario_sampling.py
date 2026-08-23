@@ -239,45 +239,85 @@ class SecondaryScenarioSampler:
         # separately-sampled schedule/evolution pair.
         drawing_high_risk = self.high_risk_df is not None and self.rng.random() < self.high_risk_fraction
         pool = self.high_risk_df if drawing_high_risk else self.geometry_df
-        row = pool.iloc[self.rng.integers(0, len(pool))]
-        miss_distance = float(row["miss_distance"])
-        alignment_angle_rad = float(row["alignment_angle_rad"])
-        sigma_x = float(row["sigma_x"])
-        sigma_z = float(row["sigma_z"])
-        combined_radius = float(row["combined_radius"])
-        native_pc = float(row["native_pc"])
-        augmented = False
 
-        if drawing_high_risk and self.high_risk_augment:
-            # Posterior-resampling augmentation (docs/25-augmentation-and-
-            # threshold-findings.md): this row's covariance IS its own
-            # statement of "here is the distribution of plausible true
-            # miss-vector offsets consistent with this real measurement" --
-            # (sigma_x, sigma_z) describes uncertainty about where the
-            # real encounter actually was, not noise we're inventing. A
-            # fresh draw from that same distribution is a different,
-            # equally real-measurement-consistent encounter, not a
-            # synthetic one. Without this, the elevated pool (a few
-            # hundred rows at most) would produce the exact same handful
-            # of geometries every time it's drawn -- risking the policy
-            # memorizing those specific instances.
-            x0 = miss_distance * np.cos(alignment_angle_rad)
-            z0 = miss_distance * np.sin(alignment_angle_rad)
-            x0 = self.rng.normal(x0, sigma_x)
-            z0 = self.rng.normal(z0, sigma_z)
-            miss_distance = float(np.hypot(x0, z0))
-            alignment_angle_rad = float(np.arctan2(z0, x0))
-            native_r_rel = np.array([x0, z0, 0.0])
-            native_v_rel = np.array([0.0, 0.0, 1.0])
-            native_cov = np.diag([sigma_x**2, sigma_z**2, 1e-12])
-            native_pc = float(
-                compute_pc(native_r_rel, native_v_rel, native_cov, combined_radius, method="chan")
+        # A handful of real events have relative_speed high enough
+        # (found in Phase 7e/docs/26-precise-targeting.md: 15,850 m/s,
+        # nearly 2x circular LEO speed) that NO relative-velocity
+        # direction can produce a bound orbit within our LEO-realistic
+        # bounds (periapsis >= min_altitude_m, apoapsis <=
+        # max_apoapsis_altitude_m) -- confirmed analytically for that
+        # case: even the best-case (most tangential) direction implies
+        # an apoapsis ~3,344km, still past the 2,000km ceiling. This
+        # isn't a retry-budget problem (solve_secondary_initial_state_
+        # robust's attempts correctly exhaust and raise RuntimeError for
+        # a genuinely infeasible geometry, not a
+        # solvable-but-hard one) -- it's a real row that our physical
+        # model can't place at all. Redraw a different row rather than
+        # letting this crash the whole training run; bounded retries
+        # since this should be rare (real per-attempt: 0 known-hit rows
+        # this affects out of 8,672 events at the time this was found).
+        for _resample_attempt in range(5):
+            row = pool.iloc[self.rng.integers(0, len(pool))]
+            miss_distance = float(row["miss_distance"])
+            alignment_angle_rad = float(row["alignment_angle_rad"])
+            sigma_x = float(row["sigma_x"])
+            sigma_z = float(row["sigma_z"])
+            combined_radius = float(row["combined_radius"])
+            native_pc = float(row["native_pc"])
+            relative_speed = float(row["relative_speed"])
+            augmented = False
+
+            if drawing_high_risk and self.high_risk_augment:
+                # Posterior-resampling augmentation (docs/25-augmentation-
+                # and-threshold-findings.md): this row's covariance IS its
+                # own statement of "here is the distribution of plausible
+                # true miss-vector offsets consistent with this real
+                # measurement" -- (sigma_x, sigma_z) describes uncertainty
+                # about where the real encounter actually was, not noise
+                # we're inventing. A fresh draw from that same
+                # distribution is a different, equally real-measurement-
+                # consistent encounter, not a synthetic one. Without this,
+                # the elevated pool (a few hundred rows at most) would
+                # produce the exact same handful of geometries every time
+                # it's drawn -- risking the policy memorizing those
+                # specific instances.
+                x0 = miss_distance * np.cos(alignment_angle_rad)
+                z0 = miss_distance * np.sin(alignment_angle_rad)
+                x0 = self.rng.normal(x0, sigma_x)
+                z0 = self.rng.normal(z0, sigma_z)
+                miss_distance = float(np.hypot(x0, z0))
+                alignment_angle_rad = float(np.arctan2(z0, x0))
+                native_r_rel = np.array([x0, z0, 0.0])
+                native_v_rel = np.array([0.0, 0.0, 1.0])
+                native_cov = np.diag([sigma_x**2, sigma_z**2, 1e-12])
+                native_pc = float(
+                    compute_pc(native_r_rel, native_v_rel, native_cov, combined_radius, method="chan")
+                )
+                augmented = True
+
+            try:
+                pre_solve_scenario = solve_secondary_initial_state_robust(
+                    self.ego_r0,
+                    self.ego_v0,
+                    nominal_tca_s,
+                    miss_distance,
+                    relative_speed,
+                    alignment_angle_rad,
+                    self.rng,
+                )
+                break
+            except RuntimeError:
+                continue
+        else:
+            raise RuntimeError(
+                f"SecondaryScenarioSampler: 5 consecutive rows were geometrically "
+                f"infeasible (pool={'high-risk' if drawing_high_risk else 'full'}, "
+                f"last relative_speed={relative_speed})"
             )
-            augmented = True
 
         sample = {
             "miss_distance": miss_distance,
-            "relative_speed": float(row["relative_speed"]),
+            "relative_speed": relative_speed,
             "sigma_x": sigma_x,
             "sigma_z": sigma_z,
             "combined_radius": combined_radius,
@@ -298,22 +338,11 @@ class SecondaryScenarioSampler:
         # (tight sigma_x, loose sigma_z) covariance axes -- not the exact
         # 3D orientation (that was never physically meaningful to preserve,
         # since v_rel's direction here is independently sampled below),
-        # just the relative geometry that actually determines Pc.
-        orientation_angle_rad = sample["alignment_angle_rad"]
-        # solve_secondary_initial_state_robust's own default max_attempts
-        # (200,000, raised in Phase 7e -- docs/26-precise-targeting.md,
-        # affordable due to a retry-loop performance fix landed alongside
-        # it) is what makes this reliable for real events with relative
-        # speeds well above typical LEO orbital speed; not overridden here.
-        scenario = solve_secondary_initial_state_robust(
-            self.ego_r0,
-            self.ego_v0,
-            nominal_tca_s,
-            sample["miss_distance"],
-            sample["relative_speed"],
-            orientation_angle_rad,
-            self.rng,
-        )
+        # just the relative geometry that actually determines Pc. Solved
+        # above, inside the infeasible-row resample loop -- not re-solved
+        # here (that would waste an expensive call and consume extra RNG
+        # draws for no reason).
+        scenario = pre_solve_scenario
 
         if drawing_high_risk and self.high_risk_precise_targeting:
             # docs/26-precise-targeting.md: the J2-only solver above is
