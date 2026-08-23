@@ -24,3 +24,6 @@ data/kelvins_cdm/*
 *.zip
 runs/
 checkpoints/
+
+# agent tooling infrastructure (subagent git worktrees), not project content
+.claude/
