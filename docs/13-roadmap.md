@@ -335,6 +335,78 @@ phase depends on "trust me, it'll come together later."
   `high_risk_fraction`/`high_risk_pool_fraction` before spending a real
   training budget on a specific choice.
 
+## Phase 7d — Augmentation, ESA-anchored pool, threshold check — DONE
+- Attacked Phase 7c's scarcity finding from three angles: more real data
+  (none found — Space-Track/SOCRATES/commercial providers all dead ends,
+  a genuine negative result, not a failed search), grounded synthetic
+  variety from what exists (posterior-resampling augmentation, validated:
+  >5,000 actionable synthetic variants from real events' own reported
+  measurement uncertainty), and whether the threshold itself is
+  miscalibrated (no — NASA CARA's real threshold *is* `1e-4`, confirmed
+  via research, matching what this project already uses).
+- **Real bug found and fixed along the way**: our own recomputed
+  `native_pc` under-counts risk relative to ESA's own reported
+  assessment — 13 real events exceed `Pc>1e-4` by ESA's numbers, not 1;
+  our pipeline's RCS-based combined-radius approximation misses most of
+  them (one case ~300x low). `geometry_events.csv` gained
+  `esa_reported_pc`; the elevated-risk pool now ranks by
+  `max(native_pc, esa_reported_pc)`, taking the pool's count of
+  known-actionable events from 1 to 7.
+- `high_risk_augment` (default True) implemented in
+  `SecondaryScenarioSampler`: resamples a pool draw's miss vector from
+  its own real reported covariance for genuine, physically-grounded
+  variety, not exact-row repetition.
+- **Deliverable**: augmentation + ESA-anchored ranking (both merged into
+  `scenario_sampling.py`), full writeup in `25-augmentation-and-
+  threshold-findings.md`.
+
+## Phase 7e — Precise targeting — DONE
+- Root-caused and fixed why the elevated-risk pool's small (tens-of-
+  meters) real miss distances weren't actually reaching the simulated
+  training data with correct risk values. Not one bug — five, found
+  across an initial pass and three parallel follow-up investigations
+  (root-cause debugging, a miss-distance-floor fallback, a threshold
+  reconsideration):
+  1. J2-only targeting solver only accurate to ~100-200m at short lead
+     times, regardless of target size (the original, expected problem).
+  2. Fixed via `correct_targeting_geometry`, a Newton/fixed-point
+     correction loop using Basilisk itself as ground truth (researched
+     Orekit/GMAT/Tudat first — none would fully close the gap, and
+     Basilisk is literally the model being matched, not an independent
+     one). Two more bugs found en route: missing Sun gravity in the
+     correction's own probe, and an unrealistic-orbit validation gap
+     (bound-but-near-GEO-apoapsis orbits weren't caught by a
+     hyperbolic-only check) — both fixed, plus a severe retry-loop
+     performance bug (~22.5s/attempt measured, not the ~10ms assumed;
+     fixed via restructuring, 20-60x faster).
+  3. Even after all that, end-to-end results still didn't match. Two
+     fallback threads (floor, threshold) were run in parallel with
+     continued root-cause debugging and both came back negative: a
+     miss-distance floor doesn't reliably work (the divergence didn't
+     track miss distance cleanly, and real actionable events cluster
+     exactly where a safe floor would exclude them) and the threshold
+     needed no change (`25`'s Finding 4). This made the root-cause
+     thread the only viable path.
+  4. That thread found three MORE separate bugs: `utc_init` never
+     reaching the real environment's SPICE setup at all (silently using
+     bsk_rl's own default epoch, ~18 years off, for the entire project);
+     a 2D-projection blind spot in the correction's own error metric
+     (could report false convergence while ~all the true 3D error hid in
+     the projected-out dimension); and the deep one — `deepcopy`
+     silently orphaning `SecondaryScenarioSampler`, freezing the
+     secondary satellite's *actual* simulated position to its very first
+     sample for the lifetime of any environment instance, since Phase
+     5c, for the entire project until found. Confirmed via direct
+     `id()`/generation inspection before implementing anything.
+- **Validated**: the single real event above `pc_threshold=1e-4` (38m
+  miss distance) now matches expected risk to within 0.27% (was off by
+  6-7 orders of magnitude). 20-episode sweep: 100% within 2x, median
+  0.02% off. All 127 project tests pass.
+- **Deliverable**: a scenario generator that can actually produce
+  genuinely high-risk training episodes from real data — full technical
+  writeup, including the parallel-investigation process, in
+  `26-precise-targeting.md`.
+
 ## Phase 8 — Open-source polish
 - README, install instructions, worked example notebook, CI green,
   license file (note: MIT/Apache2 recommended for the code itself; the
