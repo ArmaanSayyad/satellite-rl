@@ -69,6 +69,33 @@ class SecondaryScenarioSampler:
     Kelvins-derived bootstrap table, per docs/15-distribution-fitting-
     results.md) each time `generation` is incremented, and exposes it as
     bsk_rl sat_args callables plus the resulting Pc-relevant parameters.
+
+    Deliberately deepcopy-proof (see `__deepcopy__` below) -- found in
+    Phase 7e (docs/26-precise-targeting.md) to be load-bearing, not
+    defensive: bsk_rl's `GeneralSatelliteTasking.__init__` does
+    `self.satellites = deepcopy(satellites)`, and since the secondary
+    satellite's `sat_args["rN"]`/`["vN"]` are BOUND METHODS on an
+    instance of this class, a plain deepcopy recursively clones the
+    instance those methods are bound to -- producing an independent,
+    permanently-orphaned copy that the satellite's actual `rN()`/`vN()`
+    calls use from that point on, completely disconnected from the
+    `SecondaryScenarioSampler` instance `env.reset()` (in collision_
+    avoidance_env.py) mutates via `.generation`/`.rng`. That orphaned
+    clone's `generation` never advances (nothing external ever touches
+    it again), so its own `_ensure_current()` short-circuits on every
+    subsequent call -- meaning the secondary satellite's ACTUAL position
+    was frozen to whatever the very first sample happened to be, for the
+    entire lifetime of the env object, regardless of seed, targeting_
+    seed, or any reset() logic. Confirmed empirically (docs/26): across
+    3 resets with 3 different seeds, `env._sampler.generation` correctly
+    advanced 1->2->3, while the orphaned clone bound to the satellite's
+    own `rN()` stayed at `generation=0` and returned the byte-identical
+    result every time. `sigma_x`/`sigma_z`/`combined_radius`/schedule
+    (read directly from `env._sampler`, never through the satellite's
+    sat_args) DID correctly vary per episode, which is exactly why this
+    went undetected: episodes LOOKED diverse (varying risk parameters,
+    varying reward-relevant reads) while the actual simulated geometry
+    was silently constant since Phase 5c.
     """
 
     def __init__(
@@ -176,6 +203,22 @@ class SecondaryScenarioSampler:
         self._cached_sample: dict | None = None
         self._cached_schedule_s: list | None = None
         self._cached_evolution: dict | None = None
+
+    def __deepcopy__(self, memo: dict) -> "SecondaryScenarioSampler":
+        """Deepcopy-proof: always return the SAME instance, never a copy.
+
+        See the class docstring -- this instance is deliberately shared,
+        live, env-level state (mutated by `env.reset()`, read via the
+        `rN`/`vN` bound methods bsk_rl's `sat_args` holds), not a value
+        object safe to clone. Returning `self` here is what makes it
+        survive `GeneralSatelliteTasking.__init__`'s
+        `deepcopy(satellites)` intact -- without it, that deepcopy
+        silently orphans a copy of this object, and the real one's
+        mutations (generation, rng) stop reaching the satellite's actual
+        `rN()`/`vN()` calls entirely.
+        """
+        memo[id(self)] = self
+        return self
 
     def _ensure_current(self) -> None:
         if self._cached_generation == self.generation:
