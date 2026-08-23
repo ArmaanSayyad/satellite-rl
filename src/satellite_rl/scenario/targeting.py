@@ -249,7 +249,7 @@ def solve_secondary_initial_state_robust(
     relative_speed_ms: float,
     orientation_angle_rad: float,
     rng: np.random.Generator,
-    max_attempts: int = 200_000,
+    max_attempts: int = 20_000,
     min_altitude_m: float = DEFAULT_MIN_ALTITUDE_M,
     max_apoapsis_altitude_m: float = DEFAULT_MAX_APOAPSIS_ALTITUDE_M,
 ) -> TargetedScenario:
@@ -315,7 +315,7 @@ def solve_secondary_initial_state_robust(
     docs/18-scenario-generator-hardening.md for the full sweep), so
     `max_attempts` needs real headroom, not just a safety margin.
 
-    **Default raised from 50 to 200,000 in Phase 7e** (docs/26-precise-
+    **Default raised from 50 to 20,000 in Phase 7e** (docs/26-precise-
     targeting.md) after adding checks (c) and (d) exposed that 50 wasn't
     actually enough across the full realistic parameter range these
     docstrings already claimed to cover: at `relative_speed_ms=14,919`
@@ -330,8 +330,25 @@ def solve_secondary_initial_state_robust(
     With the fix, a full 20-case sweep across the entire realistic
     parameter range (miss distance 20m-50km, relative speed
     100m/s-15km/s, 3-day lead time) -- including two cases that
-    previously failed even at 3,000 attempts -- completed 20/20 in 13.3s
-    total (0.66s/case average) at this default.
+    previously failed even at 3,000 attempts -- completed 20/20 within
+    200,000 attempts, 13.3s total (0.66s/case average).
+
+    **Lowered again, 200,000 -> 20,000, after finding a real training
+    run hit a genuinely INFEASIBLE event** (`relative_speed_ms=15,850` --
+    confirmed analytically, not just empirically: even the most
+    favorable possible direction implies an apoapsis ~3,344km, still
+    past `DEFAULT_MAX_APOAPSIS_ALTITUDE_M`'s 2,000km ceiling, so no
+    `v_rel_hat` at all can satisfy every check simultaneously for this
+    row). Exhausting 200,000 attempts on a row like this measured ~29s;
+    ~3% of the real event table (262/8,672, by the same analytic check)
+    is similarly infeasible. This isn't a bug to fix by raising the
+    ceiling further -- it's real data outside what a LEO-only conjunction
+    model can represent, per `env/scenario_sampling.py`'s resample-a-
+    different-row handling. 20,000 keeps a real ~7x margin above the
+    hardest CONFIRMED-feasible case (which succeeds comfortably within
+    3,000) while failing ~10x faster (~3s, not ~29s) on truly infeasible
+    ones -- callers don't pay the full 200,000-attempt cost just to
+    discover a row can't be placed at all.
 
     Since the relative-velocity DIRECTION is already a free parameter
     we're sampling (not something with a real-world-derived distribution
