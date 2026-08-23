@@ -249,7 +249,7 @@ def solve_secondary_initial_state_robust(
     relative_speed_ms: float,
     orientation_angle_rad: float,
     rng: np.random.Generator,
-    max_attempts: int = 3000,
+    max_attempts: int = 200_000,
     min_altitude_m: float = DEFAULT_MIN_ALTITUDE_M,
     max_apoapsis_altitude_m: float = DEFAULT_MAX_APOAPSIS_ALTITUDE_M,
 ) -> TargetedScenario:
@@ -315,7 +315,7 @@ def solve_secondary_initial_state_robust(
     docs/18-scenario-generator-hardening.md for the full sweep), so
     `max_attempts` needs real headroom, not just a safety margin.
 
-    **Default raised from 50 to 3,000 in Phase 7e** (docs/26-precise-
+    **Default raised from 50 to 200,000 in Phase 7e** (docs/26-precise-
     targeting.md) after adding checks (c) and (d) exposed that 50 wasn't
     actually enough across the full realistic parameter range these
     docstrings already claimed to cover: at `relative_speed_ms=14,919`
@@ -323,11 +323,15 @@ def solve_secondary_initial_state_robust(
     measured per-attempt success rate under the new (correct) checks was
     roughly 0.3%, not the ~18-42% the old estimate was based on (that
     estimate only reflected failure mode (b), never (c)/(d), since
-    neither existed as a check yet). 300 attempts gave only 7/10 for that
-    case; 3,000 gave 10/10 in a real test (~8s wall-clock for that
-    specific worst-case draw). J2 attempts are cheap (~10ms each), so
-    this doesn't meaningfully slow the common case, which still converges
-    in a handful of attempts regardless of this ceiling.
+    neither existed as a check yet). This large a default is only
+    affordable because of the performance fix noted below -- with the
+    ORIGINAL (pre-Phase-7e) retry loop, even 3,000 attempts could take
+    hours for a hard case (measured ~22.5s/attempt at a 3-day lead time).
+    With the fix, a full 20-case sweep across the entire realistic
+    parameter range (miss distance 20m-50km, relative speed
+    100m/s-15km/s, 3-day lead time) -- including two cases that
+    previously failed even at 3,000 attempts -- completed 20/20 in 13.3s
+    total (0.66s/case average) at this default.
 
     Since the relative-velocity DIRECTION is already a free parameter
     we're sampling (not something with a real-world-derived distribution
@@ -335,26 +339,47 @@ def solve_secondary_initial_state_robust(
     either failure mode is a legitimate retry, not silently changing the
     requested scenario's actual physical parameters (miss distance and
     relative speed magnitude are preserved exactly across retries).
+
+    **Performance note, Phase 7e**: the naive implementation of this
+    retry loop (call `solve_secondary_initial_state` fresh each attempt,
+    check its `r_sec_t0`/`v_sec_t0` afterward) was measured at ~22.5s per
+    attempt for a 3-day lead time -- NOT the ~10ms this docstring
+    originally (wrongly) assumed, an unverified guess rather than a
+    measurement. At that real cost, `max_attempts=3000` could take hours.
+    Two changes fixed this without changing any accept/reject outcome:
+    (1) the ego's forward propagation (`propagate_state(ego_r0_m,
+    ego_v0_ms, time_to_tca_s)`) doesn't depend on the sampled `v_rel_hat`
+    at all, so it's computed ONCE here instead of once per attempt; (2)
+    periapsis/eccentricity/apoapsis are conserved quantities under
+    two-body dynamics (exactly) and approximately conserved under J2 over
+    these timescales -- the same approximation the original t0-based
+    check already relied on -- so they're checked against the CHEAP,
+    already-computed TCA state (`r_sec_tca`/`v_sec_tca`, pure vector
+    algebra, no propagation) instead of the EXPENSIVE backward-propagated
+    t0 state. The backward propagation (the genuinely expensive step)
+    only runs for candidates that already pass all three checks, instead
+    of for every attempt regardless of outcome. `solve_secondary_
+    initial_state` itself is untouched (still used standalone e.g. by
+    scripts/validate_targeting_against_basilisk.py) -- this only changes
+    this function's internal loop.
     """
+    r_ego_tca, v_ego_tca = propagate_state(ego_r0_m, ego_v0_ms, time_to_tca_s)
+
     last_error: Exception = RuntimeError("max_attempts must be >= 1")
     for _attempt in range(max_attempts):
-        try:
-            scenario = solve_secondary_initial_state(
-                ego_r0_m,
-                ego_v0_ms,
-                time_to_tca_s,
-                miss_distance_m,
-                relative_speed_ms,
-                orientation_angle_rad,
-                rng,
-            )
-        except RuntimeError as exc:
-            last_error = exc
-            continue
+        v_rel_hat = rng.normal(size=3)
+        v_rel_hat /= np.linalg.norm(v_rel_hat)
+        v_rel = relative_speed_ms * v_rel_hat
 
-        periapsis_altitude = osculating_periapsis_altitude_m(
-            scenario.r_sec_t0, scenario.v_sec_t0
+        basis = encounter_plane_basis(v_rel)
+        miss_2d = miss_distance_m * np.array(
+            [np.cos(orientation_angle_rad), np.sin(orientation_angle_rad)]
         )
+        r_rel = basis @ miss_2d
+        r_sec_tca = r_ego_tca + r_rel
+        v_sec_tca = v_ego_tca + v_rel
+
+        periapsis_altitude = osculating_periapsis_altitude_m(r_sec_tca, v_sec_tca)
         if periapsis_altitude < min_altitude_m:
             last_error = ValueError(
                 f"secondary orbit periapsis altitude {periapsis_altitude:.0f}m "
@@ -362,14 +387,14 @@ def solve_secondary_initial_state_robust(
             )
             continue
 
-        eccentricity = osculating_eccentricity(scenario.r_sec_t0, scenario.v_sec_t0)
+        eccentricity = osculating_eccentricity(r_sec_tca, v_sec_tca)
         if eccentricity >= 1.0:
             last_error = ValueError(
                 f"secondary orbit is hyperbolic (eccentricity={eccentricity:.3f})"
             )
             continue
 
-        apoapsis_altitude = osculating_apoapsis_altitude_m(scenario.r_sec_t0, scenario.v_sec_t0)
+        apoapsis_altitude = osculating_apoapsis_altitude_m(r_sec_tca, v_sec_tca)
         if apoapsis_altitude > max_apoapsis_altitude_m:
             last_error = ValueError(
                 f"secondary orbit apoapsis altitude {apoapsis_altitude:.0f}m "
@@ -377,7 +402,22 @@ def solve_secondary_initial_state_robust(
             )
             continue
 
-        return scenario
+        try:
+            r_sec_t0, v_sec_t0 = propagate_state(r_sec_tca, v_sec_tca, -time_to_tca_s)
+        except RuntimeError as exc:
+            last_error = exc
+            continue
+
+        return TargetedScenario(
+            r_sec_t0=r_sec_t0,
+            v_sec_t0=v_sec_t0,
+            r_ego_tca=r_ego_tca,
+            v_ego_tca=v_ego_tca,
+            r_sec_tca_target=r_sec_tca,
+            v_sec_tca_target=v_sec_tca,
+            miss_distance_target=miss_distance_m,
+            relative_speed_target=relative_speed_ms,
+        )
 
     raise RuntimeError(
         f"solve_secondary_initial_state failed after {max_attempts} attempts "

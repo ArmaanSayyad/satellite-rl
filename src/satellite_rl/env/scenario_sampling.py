@@ -258,9 +258,10 @@ class SecondaryScenarioSampler:
         # just the relative geometry that actually determines Pc.
         orientation_angle_rad = sample["alignment_angle_rad"]
         # solve_secondary_initial_state_robust's own default max_attempts
-        # (3,000, raised in Phase 7e -- docs/26-precise-targeting.md) is
-        # what makes this reliable for real events with relative speeds
-        # well above typical LEO orbital speed; not overridden here.
+        # (200,000, raised in Phase 7e -- docs/26-precise-targeting.md,
+        # affordable due to a retry-loop performance fix landed alongside
+        # it) is what makes this reliable for real events with relative
+        # speeds well above typical LEO orbital speed; not overridden here.
         scenario = solve_secondary_initial_state_robust(
             self.ego_r0,
             self.ego_v0,

@@ -189,7 +189,6 @@ def test_robust_solver_rejects_hyperbolic_scenario():
         relative_speed_ms=14_919.0,
         orientation_angle_rad=1.0,
         rng=rng,
-        max_attempts=3000,
     )
     assert osculating_eccentricity(scenario.r_sec_t0, scenario.v_sec_t0) < 1.0
     assert (
