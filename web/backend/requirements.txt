@@ -1,0 +1,6 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+
+# test-only: needed by starlette.testclient.TestClient, used in
+# tests/test_web_backend.py
+httpx>=0.27
