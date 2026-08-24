@@ -407,6 +407,44 @@ phase depends on "trust me, it'll come together later."
   writeup, including the parallel-investigation process, in
   `26-precise-targeting.md`.
 
+## Phase 7g — First training run on the fixed pipeline — DONE
+- First real training run (8,000 timesteps, curriculum stage 2,
+  `high_risk_fraction=0.5`/`pool_fraction=0.01`/augment+precise-targeting
+  on) since Phases 7d-7f fixed the scenario generator -- the actual test
+  of whether that multi-phase fix mattered for training outcomes, not
+  just for isolated validation numbers.
+- A first broad held-out check (260 episodes total across two sweeps)
+  found zero genuinely high-risk episodes despite exposure being on --
+  not a bug, but augmentation diluting most resampled variants below
+  threshold (docs/25 already found this for the best-known case: only
+  ~38% of its augmented variants stay above `1e-4`). Still useful: `never_
+  maneuver`'s own outcome distribution now shows real, nonzero variation
+  across these sweeps -- independent confirmation the fix works broadly.
+- A second, targeted evaluation (no augmentation dilution, drawing only
+  from the 7 known ESA-anchored actionable events) surfaced 5 genuinely
+  dangerous held-out episodes -- enough for a real stratified comparison.
+  **First time in the project the trained policy's reward beats both
+  `never_maneuver` and the realistic `threshold_heuristic`**: it drove
+  Pc to exactly zero on all 5 dangerous episodes (matching only what
+  the crude `always_max_thrust`/`random` baselines could do previously)
+  while using ~23-27x less fuel than either. The threshold heuristic
+  (meant to mirror real operational practice) barely helped on these
+  specific real geometries -- a genuine finding about that baseline's
+  fixed-direction design, not the trained policy underperforming a
+  strong comparison.
+- **Honest limitation, not swept aside**: the trained policy shows no
+  explicit risk-gating (near-constant reward/action regardless of
+  scenario danger, same pattern Phase 6 first found) -- it converged to
+  a cheap, near-fixed "insurance" maneuver that happens to work well for
+  this training distribution's typical geometries, not a reactive
+  policy that conditions on observed risk. Not fuel-optimal (~33x the
+  hindsight oracle's average fuel). Flagged as real future work, not
+  required to call this phase's goal met.
+- **Deliverable**: a trained policy checkpoint that measurably beats
+  every fairly-comparable baseline on genuine real danger, full writeup
+  (including the two-tier evaluation methodology needed to actually
+  surface high-risk episodes) in `27-riskaware-training-results.md`.
+
 ## Phase 8 — Open-source polish
 - README, install instructions, worked example notebook, CI green,
   license file (note: MIT/Apache2 recommended for the code itself; the
