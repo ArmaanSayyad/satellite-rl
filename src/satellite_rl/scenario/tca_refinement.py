@@ -1,27 +1,26 @@
 """Two Basilisk-ground-truth corrections for the J2-based targeting
 solver's (scenario/targeting.py) two distinct residual errors: WHEN true
 closest approach occurs (`refine_tca`) and WHERE the encounter actually
-lands in the miss-vector plane (`correct_targeting_geometry`, added Phase
-7e -- see docs/26-precise-targeting.md). Both propagate both objects
-under Basilisk's real (10th-degree spherical harmonics + SPICE) dynamics
-from t0 -- the only way to see either error, since the Basilisk-vs-J2
-divergence accumulates gradually over the entire trajectory, not just
-near closest approach, and no analytic J2 correction can capture the
-higher-order terms Basilisk includes and J2 doesn't (see docs/18-
-scenario-generator-hardening.md part 2 for the original timing diagnosis,
-docs/26 for the positional one).
+lands in the miss-vector plane (`correct_targeting_geometry`, added
+Phase 7e -- see TECHNICAL.md §6, "Five bugs standing between..."). Both
+propagate both objects under Basilisk's real (10th-degree spherical
+harmonics + SPICE) dynamics from t0 -- the only way to see either
+error, since the Basilisk-vs-J2 divergence accumulates gradually over
+the entire trajectory, not just near closest approach, and no analytic
+J2 correction can capture the higher-order terms Basilisk includes and
+J2 doesn't.
 
-Why this split matters, empirically (docs/26): for a short (~5hr)
-lead time, `refine_tca`'s timing offset is tiny (<0.02s, confirmed
-directly) -- the WHEN error is negligible here. But the WHERE error (the
-achieved miss vector at the correct time, vs. the targeted one) is
-~100-200m regardless of target size, confirmed to swamp small (tens-of-
-meters) intended miss distances even though it was invisible at the
-km-scale miss distances every earlier phase validated against.
+Why this split matters, empirically (TECHNICAL.md §6): for a short
+(~5hr) lead time, `refine_tca`'s timing offset is tiny (<0.02s,
+confirmed directly) -- the WHEN error is negligible here. But the WHERE
+error (the achieved miss vector at the correct time, vs. the targeted
+one) is ~100-200m regardless of target size, confirmed to swamp small
+(tens-of-meters) intended miss distances even though it was invisible
+at the km-scale miss distances every earlier phase validated against.
 `correct_targeting_geometry` fixes that specific problem via a Newton/
 fixed-point correction loop, converging to sub-meter accuracy in 1-3
-Basilisk calls per docs/26's validation across 15+ test cases spanning
-2-642m miss distances and 0.2-3 day lead times.
+Basilisk calls, validated across 15+ test cases spanning 2-642m miss
+distances and 0.2-3 day lead times.
 
 Benchmarked at ~1.5-3s wall-clock per Basilisk call for a realistic
 3-day, two-satellite scenario at 5-10s sampling resolution (Phase 5b) --
@@ -33,8 +32,8 @@ throughput cost). A one-time cost per scenario (paid at environment/
 scenario construction), not per RL training step.
 
 API/setup verified against Phase 4's working `bsk_rl`-based environment
-and Phase 3's raw-Basilisk debugging (gravity/SPICE/GravBodyVector setup
--- see docs/17-env-implementation-notes.md); this module uses raw
+and Phase 3's raw-Basilisk debugging (gravity/SPICE/GravBodyVector
+setup -- see TECHNICAL.md §6); this module uses raw
 Basilisk scripting (not bsk_rl's Gym wrapper) specifically to get direct
 access to a full fine-grained state recorder, which isn't straightforward
 to extract through bsk_rl's step()-based interface.
@@ -63,8 +62,8 @@ def _fly_passive_pair(
     """Propagate two passive spacecraft under full Basilisk dynamics
     (10th-degree spherical harmonics + SPICE Earth orientation + solar
     third-body gravity, matching bsk_rl's own `WorldModel.setup_gravity_
-    bodies` exactly -- see docs/26-precise-targeting.md's Phase 7e
-    correction: this function originally omitted the Sun as a gravity
+    bodies` exactly -- see TECHNICAL.md §6's Phase 7e correction: this
+    function originally omitted the Sun as a gravity
     body, which its own docstring claimed (wrongly) not to matter. That
     omission was invisible to `refine_tca`'s original bracket-and-
     interpolate TIMING use (tolerant of small dynamics-model
@@ -78,9 +77,10 @@ def _fly_passive_pair(
     data path and `zeroBase` casing, not just the same gravity degree.
 
     Also fixed, same Phase: a SEPARATE and much larger bug -- `utc_init`
-    never actually reached the real environment's SPICE setup at all (see
-    docs/26: it needs to flow through `GeneralSatelliteTasking`'s
-    `world_args`, not per-satellite `sat_args`, which is silently
+    never actually reached the real environment's SPICE setup at all
+    (see TECHNICAL.md §6: it needs to flow through
+    `GeneralSatelliteTasking`'s `world_args`, not per-satellite
+    `sat_args`, which is silently
     ignored). The real environment was using bsk_rl's own built-in
     default epoch, ~18 years off from this function's intended one --
     putting the Sun ~94 degrees off in direction between the two, which
@@ -169,7 +169,7 @@ def refine_tca(
         nominal_tca_s: the targeting solver's assumed time-to-TCA.
         sim_rate_s: recorder/integration resolution -- 5-10s gives ample
             precision for typical residual timing offsets (tens of
-            seconds, per docs/18) via the quadratic refinement below,
+            seconds) via the quadratic refinement below,
             while keeping wall-clock cost low.
         margin_s: how far past nominal_tca_s to keep propagating, to
             ensure the true minimum (which could be slightly before or
@@ -229,7 +229,7 @@ def correct_targeting_geometry(
     under Basilisk, measure the achieved miss vector in the target's own
     encounter plane, and request a correction equal to the target minus
     the observed bias of the current request (not minus the raw error --
-    see docs/26-precise-targeting.md for why using the WRONG reference on
+    see TECHNICAL.md §6 for why using the WRONG reference on
     iteration 2+ caused this to oscillate rather than converge during
     development). Tracks the best (lowest-error) state seen across all
     iterations and returns that, so a run that doesn't fully converge
@@ -246,7 +246,7 @@ def correct_targeting_geometry(
             change).
         nominal_tca_s: time from t0 to the targeted TCA.
         max_iters: correction attempts. Convergence rate depends on lead
-            time, not just miss distance: validated (docs/26) to need
+            time, not just miss distance: validated (TECHNICAL.md §6) to need
             only 1-3 for the actual curriculum-stage-2 production regime
             (2-642m miss distances, 0.2-day lead time -- the only lead
             time `high_risk_precise_targeting` is actually used for, per
@@ -278,7 +278,7 @@ def correct_targeting_geometry(
     # projection. An earlier version of this function projected onto
     # `encounter_plane_basis(v_rel_target)` (the basis implied by the
     # ORIGINAL target relative velocity) and measured/corrected error
-    # there. That's a real bug, found in Phase 7e (docs/26): the ACHIEVED
+    # there. That's a real bug, found in Phase 7e (TECHNICAL.md §6): the ACHIEVED
     # relative velocity at the real TCA can rotate meaningfully from
     # v_rel_target (J2 + solar perturbation over the propagation), and
     # projecting onto a basis perpendicular to the WRONG (stale) velocity

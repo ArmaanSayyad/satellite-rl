@@ -1,4 +1,5 @@
-"""The collision-avoidance Gymnasium environment. See docs/12-architecture.md."""
+"""The collision-avoidance Gymnasium environment. See TECHNICAL.md §3
+(System architecture)."""
 
 from .collision_avoidance_env import CollisionAvoidanceEnv
 

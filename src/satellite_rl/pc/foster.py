@@ -1,6 +1,6 @@
 """Foster (1992) numerical double-integral method for 2D collision probability.
 
-See docs/04-collision-probability.md for the derivation. Integrates the
+See TECHNICAL.md §3 (System architecture) for context. Integrates the
 offset bivariate Gaussian density over a disk of radius `combined_radius`
 (the combined hard-body radius), centered at the origin of the
 encounter-plane coordinate system (zero relative separation = an actual

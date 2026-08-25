@@ -1,9 +1,9 @@
 """PPO training for CollisionAvoidanceEnv, via Stable-Baselines3.
 
-See docs/10-rl-algorithm.md for the design rationale (why PPO, why SB3,
-starting hyperparameters) and docs/21-training-results.md for what a real
-run actually produced -- Phase 5 found stage 3 (evolving uncertainty,
-real schedules) runs at only ~1.3 steps/sec versus ~8-9 steps/sec for
+See TECHNICAL.md §5 (Training setup) for the design rationale (why PPO,
+why SB3, hyperparameters) and §7 (Results) for what real training runs
+actually produced -- Phase 5 found stage 3 (evolving uncertainty, real
+schedules) runs at only ~1.3 steps/sec versus ~8-9 steps/sec for
 stages 1/2 (short fixed schedules), so this defaults to stage 2 (sampled
 geometry, short fixed schedule) to keep training tractable, not stage 3.
 """
@@ -55,13 +55,14 @@ def train(
 ) -> tuple[PPO, Monitor]:
     """Train PPO on CollisionAvoidanceEnv and save a checkpoint + monitor log.
 
-    Hyperparameter choices vs. SB3/docs/10's generic defaults, and why:
-    - n_steps=64, batch_size=32: docs/10 default (n_steps=2048) assumes
+    Hyperparameter choices vs. SB3's generic defaults, and why (see
+    TECHNICAL.md §5 for the full rationale):
+    - n_steps=64, batch_size=32: SB3's default (n_steps=2048) assumes
       long episodes; stage 2's episodes are only 4-6 steps, so 2048 would
       need 340-500+ episodes collected before a single PPO update.
-    - gamma=0.95 (not 0.99): short episode horizon (4-6 decision steps),
-      per docs/10's note that 0.99 may be higher than needed here.
-    - ent_coef=0.01 (SB3 default is 0.0): docs/10 flags that a policy
+    - gamma=0.95 (not 0.99): short episode horizon (4-6 decision steps)
+      may not need 0.99's long-horizon discounting.
+    - ent_coef=0.01 (SB3 default is 0.0): a policy
       could collapse to always-near-zero-action ("wait") early in
       training without explicit exploration pressure, since that's a
       locally low-fuel-cost, low-effort optimum even though it's not

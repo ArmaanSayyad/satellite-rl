@@ -2,8 +2,8 @@
 """Download the ESA Kelvins Collision Avoidance Challenge dataset (CC-BY-4.0)
 from its canonical Zenodo record and unpack it into data/kelvins_cdm/.
 
-See docs/05-datasets.md for the license/provenance details this script
-records into data/kelvins_cdm/SOURCE.md.
+See TECHNICAL.md §2 (Data) for the license/provenance details this
+script records into data/kelvins_cdm/SOURCE.md.
 """
 
 import hashlib
@@ -84,7 +84,7 @@ Attribution required per CC-BY-4.0: T. Uriot, D. Izzo, L. F. Simoes,
 R. Abay, N. Einecke, S. Rebhan, J. Martinez-Heras, F. Letizia,
 J. Siminski, K. Merz -- and ESA's Advanced Concepts Team / Space Debris
 Office, with the US Space Surveillance Network as the underlying data
-source. See docs/05-datasets.md for the full research notes on this
+source. See TECHNICAL.md §2 (Data) for the full research notes on this
 dataset (schema, redistribution terms, use in this project).
 """,
         encoding="utf-8",

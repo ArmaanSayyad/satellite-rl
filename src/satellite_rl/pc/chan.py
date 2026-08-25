@@ -3,7 +3,7 @@
 Ported faithfully from Orekit's Chan1997.java
 (org.orekit.ssa.collision.shorttermencounter.probability.twod), verified
 against the actual Orekit source (github.com/CS-SI/Orekit, Aug 2026) --
-not reconstructed from memory. See docs/04-collision-probability.md.
+not reconstructed from memory. See TECHNICAL.md §3 (System architecture).
 
 Reference: Chan, K., "Collision Probability Analyses for Earth Orbiting
 Satellites," ISCOPS 1997, Nagasaki, Advances in the Astronautical Sciences
@@ -16,7 +16,7 @@ positional covariance, Gaussian uncertainty, deterministic relative
 velocity) -- Chan's method additionally approximates the collision region
 with a rescaled-coordinate series expansion rather than Foster's direct
 quadrature. Treat Foster as the accuracy reference and this as the fast,
-training-time-safe approximation (see docs/10-rl-algorithm.md); see
+training-time-safe approximation (see TECHNICAL.md §5, Training setup); see
 tests/test_pc.py for the measured agreement between the two.
 """
 

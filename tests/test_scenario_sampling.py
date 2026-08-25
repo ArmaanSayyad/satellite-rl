@@ -29,8 +29,8 @@ def _make_geometry_df(n: int = 20) -> pd.DataFrame:
     known: the last `k` rows by index. esa_reported_pc is always half of
     native_pc, so it never changes which row wins max(native_pc,
     esa_reported_pc) -- keeps the pool-membership math from the
-    native_pc-only design (docs/24) valid for these tests, since Phase 7d
-    (docs/25) changed ranking to that max.
+    native_pc-only design valid for these tests, since Phase 7d
+    (TECHNICAL.md §6) changed ranking to that max.
     """
     rng = np.random.default_rng(0)
     native_pc = np.arange(n) * 1e-6
@@ -130,8 +130,8 @@ def test_high_risk_fraction_out_of_range_rejected():
 def test_esa_reported_pc_can_win_pool_ranking():
     # Row n-1 (highest native_pc) is NOT in the pool once esa_reported_pc
     # for an earlier row is made to dominate -- confirms ranking uses
-    # max(native_pc, esa_reported_pc), not native_pc alone (docs/25:
-    # our own recomputed Pc materially under-counts risk for some real
+    # max(native_pc, esa_reported_pc), not native_pc alone (TECHNICAL.md
+    # §6: our own recomputed Pc materially under-counts risk for some real
     # events relative to ESA's own reported assessment).
     df = _make_geometry_df(n=20)
     df.loc[0, "esa_reported_pc"] = 1.0  # dominates every native_pc in the fixture
@@ -159,7 +159,7 @@ def test_high_risk_augment_produces_dissimilar_variants():
     # A single-row pool drawn many times with augmentation on must NOT
     # always reproduce the exact same miss_distance -- otherwise the
     # elevated pool would just be the same handful of geometries repeated
-    # (the memorization risk docs/24/25 flag augmentation as fixing).
+    # (the memorization risk TECHNICAL.md §6 flags augmentation as fixing).
     df = _make_geometry_df(n=1)
     df.loc[0, ["sigma_x", "sigma_z"]] = [50.0, 200.0]  # sizable, so jitter is visible
     ego_r0, ego_v0 = example_leo_orbit()
@@ -213,7 +213,7 @@ def test_high_risk_augment_false_reproduces_exact_row():
 
 
 def test_high_risk_precise_targeting_reports_sub_meter_error():
-    # docs/26-precise-targeting.md: gated to pool draws (small target miss
+    # TECHNICAL.md §6: gated to pool draws (small target miss
     # distances), a couple of real Basilisk calls per draw -- kept to a
     # single generation here since each call costs real wall-clock time.
     df = _make_geometry_df(n=1)
@@ -260,7 +260,7 @@ def test_high_risk_precise_targeting_off_reports_none():
 def test_high_risk_precise_targeting_not_applied_to_full_table_draws():
     # Even with high_risk_precise_targeting=True, a draw from the FULL
     # table (not the pool) must never pay the Basilisk-correction cost --
-    # gated strictly to drawing_high_risk, per docs/26.
+    # gated strictly to drawing_high_risk.
     sampler = _make_sampler(high_risk_fraction=0.0, high_risk_precise_targeting=True)
     sampler.generation = 1
     sampler.rN()
@@ -270,7 +270,7 @@ def test_high_risk_precise_targeting_not_applied_to_full_table_draws():
 
 
 def test_sampler_resamples_past_a_geometrically_infeasible_row():
-    # docs/26-precise-targeting.md: a real event with relative_speed=
+    # TECHNICAL.md §6: a real event with relative_speed=
     # 15,850 m/s crashed training -- no relative-velocity direction can
     # produce a bound, LEO-realistic orbit for it (confirmed
     # analytically: best case still implies an apoapsis ~3,344km, past

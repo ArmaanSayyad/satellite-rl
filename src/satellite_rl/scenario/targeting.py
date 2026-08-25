@@ -1,12 +1,12 @@
 """Backward-propagation targeting solver: given the ego satellite's known
 orbit and a desired encounter geometry at TCA, solve for the secondary
 object's initial state (at episode start, t0) such that propagation
-produces that encounter. See docs/03-scenario-design.md "Generating a
-conjunction: the targeting problem".
+produces that encounter. See TECHNICAL.md §3 (System architecture),
+"Generating one conjunction".
 
-Uses hapsira's Cowell propagator with a J2 perturbation term (see
-docs/17-env-implementation-notes.md). This was originally plain two-body
-Keplerian propagation, but Phase 4 found that matters a lot: J2 causes
+Uses hapsira's Cowell propagator with a J2 perturbation term. This was
+originally plain two-body Keplerian propagation, but Phase 4 found that
+matters a lot: J2 causes
 real, large secular RAAN (nodal) precession for LEO orbits -- ~14 deg over
 3 days for a 500km/51.6deg example orbit, empirically confirmed against
 bsk_rl's real Basilisk dynamics -- so plain two-body targeting produced
@@ -21,7 +21,8 @@ miss-distance scales.
 Round-trip (forward-then-backward) propagation is still highly accurate
 with J2 included, though not to the machine-precision level of the pure
 two-body closed-form solution (which has an exact analytic inverse) --
-see docs/17 for the measured self-consistency numbers with J2 enabled.
+see TECHNICAL.md §6 for the measured self-consistency numbers with J2
+enabled.
 
 Dependency note: hapsira 0.18.0 (its only PyPI release as of Aug 2026)
 requires astropy<7 -- see the pin and comment in pyproject.toml.
@@ -62,8 +63,9 @@ _J2_PROPAGATOR = CowellPropagator(f=_j2_accel)
 _EARTH_MU_M3S2 = Earth.k.to(u.m**3 / u.s**2).value
 _EARTH_R_M = Earth.R.to(u.m).value
 DEFAULT_MIN_ALTITUDE_M = 200e3  # matches bsk_rl's own default min_orbital_radius margin
-# Added Phase 7e (docs/26-precise-targeting.md): the hyperbolic-orbit
-# check (eccentricity >= 1) rejects the clearest failures but not
+# Added Phase 7e (TECHNICAL.md §6, "Five bugs standing between..."):
+# the hyperbolic-orbit check (eccentricity >= 1) rejects the clearest
+# failures but not
 # borderline ones -- a real event produced eccentricity=0.982 (BOUND, so
 # not caught) with apoapsis near GEO altitude and r_sec_t0 73,584km from
 # Earth, a wildly unrealistic "LEO debris object" and numerically
@@ -72,7 +74,7 @@ DEFAULT_MIN_ALTITUDE_M = 200e3  # matches bsk_rl's own default min_orbital_radiu
 # ground-truth correction converge against one setup while the actual
 # training environment produced a completely different outcome for the
 # same "corrected" state). This dataset's conjunctions are between LEO
-# objects (docs/01-problem-scope.md's scope), so 2,000km -- the common
+# objects (TECHNICAL.md §1's scope), so 2,000km -- the common
 # industry LEO definition ceiling -- is a physically justified bound, not
 # an arbitrary one.
 DEFAULT_MAX_APOAPSIS_ALTITUDE_M = 2_000e3
@@ -88,10 +90,9 @@ def osculating_periapsis_altitude_m(r_m: np.ndarray, v_m: np.ndarray) -> float:
     the trajectory -- not just t0 -- gives the same answer; used as a
     cheap orbit-sanity gate without needing a full propagation.
 
-    See docs/17-env-implementation-notes.md's "no orbit-sanity check"
-    follow-up and docs/18-scenario-generator-hardening.md for why this
-    matters: sampled relative-velocity directions can otherwise produce
-    secondary trajectories that dip below a physically sane altitude.
+    See TECHNICAL.md §9 (Limitations) for why this matters: sampled
+    relative-velocity directions can otherwise produce secondary
+    trajectories that dip below a physically sane altitude.
     """
     r = np.asarray(r_m, dtype=float)
     v = np.asarray(v_m, dtype=float)
@@ -133,8 +134,9 @@ def osculating_apoapsis_altitude_m(r_m: np.ndarray, v_m: np.ndarray) -> float:
 
 def osculating_eccentricity(r_m: np.ndarray, v_m: np.ndarray) -> float:
     """Eccentricity of the two-body osculating orbit through state
-    (r_m, v_m). Added Phase 7e (docs/26-precise-targeting.md) alongside
-    `osculating_periapsis_altitude_m`'s existing lower-bound (periapsis-
+    (r_m, v_m). Added Phase 7e (TECHNICAL.md §6, "Five bugs standing
+    between...") alongside `osculating_periapsis_altitude_m`'s existing
+    lower-bound (periapsis-
     too-low) sanity check, after finding a real event (relative_speed=
     14,919 m/s, well above typical LEO orbital speed) produced a
     secondary state with a perfectly fine periapsis altitude (487km,
@@ -263,14 +265,13 @@ def solve_secondary_initial_state_robust(
     problem's actual state magnitude (km-scale positions/velocities) --
     empirically, this causes `RuntimeError: Integration failed` for a
     real, non-negligible fraction of sampled geometries (~4% observed
-    over 50 trials, not exclusively at extreme relative speeds -- see
-    docs/17-env-implementation-notes.md).
+    over 50 trials, not exclusively at extreme relative speeds).
 
     (b) A sampled relative-velocity direction can put the secondary on an
     orbit whose periapsis dips below a physically sane altitude --
     bsk_rl's own `altitude_valid` aliveness check would fail mid-episode
     if this reaches the environment (found empirically building
-    Phase 4's env -- see docs/17). Checked here via
+    Phase 4's env). Checked here via
     `osculating_periapsis_altitude_m` against `min_altitude_m` (default
     matches bsk_rl's own `min_orbital_radius` margin).
 
@@ -279,8 +280,8 @@ def solve_secondary_initial_state_robust(
     unrealistic for a catalogued object (real satellites/debris are all
     in bound, periodic orbits), but NOT caught by (b): periapsis is
     well-defined and can look perfectly normal for a hyperbolic flyby.
-    Found in Phase 7e (docs/26-precise-targeting.md) via a real event
-    with `relative_speed_ms=14,919` -- well above typical LEO orbital
+    Found in Phase 7e (TECHNICAL.md §6, "Five bugs standing between...")
+    via a real event with `relative_speed_ms=14,919` -- well above typical LEO orbital
     speed (~7,600 m/s) -- which produced a secondary state with periapsis
     altitude 487km (comfortably valid) but eccentricity 7.03. This
     mattered in practice, not just in principle: such a state propagated
@@ -291,8 +292,8 @@ def solve_secondary_initial_state_robust(
     state remained physically absurd -- silently producing garbage that
     passed a narrow correctness check. High relative speeds are common
     among real high-risk Kelvins events specifically, so this isn't a
-    rare corner case for exactly the regime docs/24-risk-stratified-
-    sampling.md's elevated-risk pool draws from.
+    rare corner case for exactly the regime the elevated-risk pool
+    (TECHNICAL.md §6) draws from.
 
     (d) Rejecting only hyperbolic orbits (c) turned out insufficient on
     its own: a different real event produced a BOUND orbit (eccentricity
@@ -300,7 +301,7 @@ def solve_secondary_initial_state_robust(
     (comfortably valid, so not caught by (b) either) but an apoapsis near
     GEO altitude -- `r_sec_t0` 73,584km from Earth, a wildly unrealistic
     "LEO debris object" for a dataset whose conjunctions are between LEO
-    objects (docs/01-problem-scope.md), and just as numerically fragile
+    objects (TECHNICAL.md §1), and just as numerically fragile
     as a hyperbolic orbit for the same reason (near-parabolic orbits are
     inherently sensitive to small dynamics-model differences). Checked
     via `osculating_apoapsis_altitude_m` against `max_apoapsis_altitude_m`
@@ -311,12 +312,12 @@ def solve_secondary_initial_state_robust(
 
     **This second failure mode is common, not a rare edge case** --
     measured per-attempt valid-orbit rates of only ~18-42% depending on
-    relative speed (higher speed -> lower valid rate; see
-    docs/18-scenario-generator-hardening.md for the full sweep), so
+    relative speed (higher speed -> lower valid rate), so
     `max_attempts` needs real headroom, not just a safety margin.
 
-    **Default raised from 50 to 20,000 in Phase 7e** (docs/26-precise-
-    targeting.md) after adding checks (c) and (d) exposed that 50 wasn't
+    **Default raised from 50 to 20,000 in Phase 7e** (TECHNICAL.md §6,
+    "Five bugs standing between...") after adding checks (c) and (d)
+    exposed that 50 wasn't
     actually enough across the full realistic parameter range these
     docstrings already claimed to cover: at `relative_speed_ms=14,919`
     (a real Kelvins event, well above typical LEO orbital speed), the
@@ -448,10 +449,9 @@ def validate_self_consistency(
     """Forward-propagate the solved secondary initial state (with the same
     two-body model used to solve it) and check it reproduces the targeted
     TCA state. This validates the solver's own algebra/propagator
-    round-trip, NOT Basilisk fidelity -- see
-    docs/16-targeting-validation-results.md for the Basilisk-fidelity
-    check, which is a separate, more important question this self-check
-    can't answer.
+    round-trip, NOT Basilisk fidelity -- see TECHNICAL.md §6, "J2 nodal
+    precession", for the Basilisk-fidelity check, which is a separate,
+    more important question this self-check can't answer.
 
     Returns:
         (position_error_m, velocity_error_ms)

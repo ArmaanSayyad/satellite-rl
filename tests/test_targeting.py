@@ -4,9 +4,8 @@ Covers the self-consistency validation this module can make reliable and
 fast (J2-aware two-body, no Basilisk needed -- CI-friendly), and the
 orbit-sanity/integration-failure retry logic. The separate question of
 Basilisk-fidelity drift was resolved in Phase 4 (real J2 nodal
-precession, not a bug -- see docs/17-env-implementation-notes.md) and the
-TCA-timing-sensitivity follow-up is covered in
-docs/18-scenario-generator-hardening.md, not here.
+precession, not a bug) and the realized-vs-targeted miss-distance
+follow-up is covered in TECHNICAL.md §6, not here.
 """
 
 import numpy as np
@@ -59,11 +58,11 @@ def test_self_consistency_batch(seed):
     targeted TCA state to a tight tolerance -- this is the "batch
     validation" the roadmap calls for, for the (now J2-aware, Phase 4)
     propagator layer. (Basilisk-fidelity validation is separate, see
-    module docstring -- now resolved, see docs/17-env-implementation-notes.md.)
+    module docstring -- now resolved, see TECHNICAL.md §6.)
 
     Uses the robust (retrying) solver: hapsira's Cowell integrator fails
     outright (RuntimeError) for a real ~4% of sampled geometries due to a
-    hardcoded internal atol -- see docs/17. Since the failing direction is
+    hardcoded internal atol. Since the failing direction is
     itself a free/sampled parameter, retrying with a resampled direction
     is a legitimate fix, not a hidden change to the requested scenario.
     """
@@ -78,7 +77,7 @@ def test_self_consistency_batch(seed):
     )
     pos_error_m, vel_error_ms = validate_self_consistency(scenario, TIME_TO_TCA_S)
 
-    # Empirically (Phase 4, docs/17-env-implementation-notes.md, 200
+    # Empirically (Phase 4, TECHNICAL.md §6, 200
     # trials with the J2 propagator): max observed 10.3m / 0.013 m/s,
     # p99 6.4m / 0.011 m/s -- a much tighter, more uniform distribution
     # than the old pure-two-body case (which had a fat tail to ~170m from
@@ -126,7 +125,7 @@ def test_periapsis_altitude_known_eccentric_orbit():
 
 def test_robust_solver_rejects_low_periapsis_scenario():
     """The exact parameters that crashed Phase 4's environment with a
-    bsk_rl `altitude_valid` failure mid-episode (docs/17) must now yield
+    bsk_rl `altitude_valid` failure mid-episode must now yield
     a scenario whose secondary orbit clears the minimum altitude.
     """
     ego_r0, ego_v0 = example_leo_orbit()
@@ -172,12 +171,12 @@ def test_eccentricity_hyperbolic_orbit_exceeds_one():
 
 
 def test_robust_solver_rejects_hyperbolic_scenario():
-    """docs/26-precise-targeting.md: the exact real-event parameters that
+    """TECHNICAL.md §6: the exact real-event parameters that
     produced a hyperbolic secondary "orbit" (periapsis altitude looked
     fine at 487km, but eccentricity was 7.03) must now be rejected --
     every returned scenario's secondary orbit must be bound AND within a
-    realistic LEO apoapsis ceiling (eccentricity alone wasn't enough, per
-    docs/26 -- see the osculating_apoapsis_altitude_m tests below for the
+    realistic LEO apoapsis ceiling (eccentricity alone wasn't enough --
+    see the osculating_apoapsis_altitude_m tests below for the
     apoapsis check's own correctness)."""
     ego_r0, ego_v0 = example_leo_orbit()
     rng = np.random.default_rng(0)
@@ -218,13 +217,13 @@ def test_apoapsis_altitude_known_eccentric_orbit():
 
 
 def test_apoapsis_altitude_flags_bound_but_unrealistic_orbit():
-    # eccentricity=0.982-like case from docs/26: bound (e<1) with a
+    # eccentricity=0.982-like case from TECHNICAL.md §6: bound (e<1) with a
     # perfectly fine periapsis, but an apoapsis far beyond any realistic
     # LEO regime -- this is exactly what osculating_eccentricity alone
     # can't catch, and what max_apoapsis_altitude_m exists to reject.
     mu = 3.986004418e14
     r_p = 6_378_136.6 + 400_000.0  # 400km periapsis altitude, fine on its own
-    r_a = 73_584_000.0  # near-GEO apoapsis, per the real event found in docs/26
+    r_a = 73_584_000.0  # near-GEO apoapsis, per the real event found in TECHNICAL.md §6
     a = (r_a + r_p) / 2
     v_at_periapsis = np.sqrt(mu * (2 / r_p - 1 / a))
     r0 = np.array([r_p, 0.0, 0.0])

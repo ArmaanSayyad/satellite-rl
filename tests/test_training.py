@@ -1,7 +1,7 @@
 """Tests for satellite_rl.training.
 
 Fast, synthetic-data checks only -- a real PPO training run takes many
-minutes (Phase 6/docs/21-training-results.md found ~2 steps/sec effective
+minutes (Phase 6, TECHNICAL.md §7, found ~2 steps/sec effective
 throughput including PPO overhead) and needs bsk_rl/Basilisk, so it's
 exercised manually via `python -m satellite_rl.training.train_ppo`, not
 in the automated suite. These tests cover the pieces that don't need a
