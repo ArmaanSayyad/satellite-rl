@@ -3,8 +3,8 @@
 An interactive demo of the trained collision-avoidance policy: click
 **Begin Simulation**, watch it fly one of the 7 real, historically
 dangerous ESA close-approach events (the ones validated in
-[docs/27](../docs/27-riskaware-training-results.md)), and see whether
-it burns fuel to dodge.
+[TECHNICAL.md §7](../TECHNICAL.md#7-results)), and see whether it
+burns fuel to dodge.
 
 Two pieces:
 
@@ -26,8 +26,12 @@ Two pieces:
 
 The backend loads `runs/ppo_stage2_riskaware_run1.zip`. `runs/` is
 gitignored (training artifacts aren't committed — see the repo's
-`.gitignore`), so a fresh clone won't have it. Produce it yourself
-with the exact settings from docs/27's training run:
+`.gitignore`), so a fresh clone won't have it. Either download the
+pretrained checkpoint from this repo's
+[Releases](https://github.com/ArmaanSayyad/satellite-rl/releases) page
+and unzip it into `runs/`, or produce it yourself with the exact
+settings from the training run described in
+[TECHNICAL.md §5](../TECHNICAL.md#5-training-setup):
 
 ```bash
 python -c "
