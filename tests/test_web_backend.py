@@ -44,24 +44,50 @@ def test_health(client):
     assert resp.json() == {"status": "ok"}
 
 
-def test_simulate_returns_real_episode(client):
-    resp = client.post("/api/simulate")
+# The 7 known real ESA-anchored events -- see
+# simulation_runner.HIGH_RISK_POOL_FRACTION.
+KNOWN_MISS_DISTANCES = {38.0, 119.0, 237.0, 352.0, 473.0, 642.0, 1102.0}
+
+
+def test_list_scenarios(client):
+    resp = client.get("/api/scenarios")
+    assert resp.status_code == 200
+    scenarios = resp.json()
+
+    assert len(scenarios) == len(KNOWN_MISS_DISTANCES)
+    assert {s["miss_distance_m"] for s in scenarios} == KNOWN_MISS_DISTANCES
+    for s in scenarios:
+        assert isinstance(s["seed"], int)
+        assert s["relative_speed_ms"] > 0
+        assert s["native_pc"] >= 0.0
+
+
+def test_simulate_rejects_unknown_seed(client):
+    resp = client.post("/api/simulate", params={"seed": -999})
+    assert resp.status_code == 400
+
+
+def test_simulate_returns_real_episode_for_chosen_seed(client):
+    scenarios = client.get("/api/scenarios").json()
+    target = next(s for s in scenarios if s["miss_distance_m"] == 38.0)
+
+    resp = client.post("/api/simulate", params={"seed": target["seed"]})
     assert resp.status_code == 200
     body = resp.json()
 
     assert set(body.keys()) == {
+        "seed",
         "scenario",
         "constants",
         "keyframes",
         "decisions",
         "dense_frames",
         "result",
+        "baseline",
     }
 
-    # This must be one of the 7 known real ESA-anchored events, not an
-    # arbitrary draw -- see simulation_runner.HIGH_RISK_POOL_FRACTION.
-    known_miss_distances = {38.0, 119.0, 237.0, 352.0, 473.0, 642.0, 1102.0}
-    assert body["scenario"]["miss_distance_m"] in known_miss_distances
+    assert body["seed"] == target["seed"]
+    assert body["scenario"]["miss_distance_m"] == 38.0
 
     assert len(body["keyframes"]) >= 2
     assert len(body["dense_frames"]) >= len(body["keyframes"])
@@ -75,3 +101,19 @@ def test_simulate_returns_real_episode(client):
     assert result["total_fuel_used_ms"] >= 0.0
     assert result["maneuver_count"] >= 0
     assert isinstance(result["collision_occurred"], bool)
+
+    baseline = body["baseline"]
+    assert baseline["policy"] == "never_maneuver"
+    assert isinstance(baseline["collision_occurred"], bool)
+    # The 38m event is a genuinely dangerous one (native_pc > 1e-4, per
+    # docs/27) -- with literally no maneuver, the live re-simulation
+    # should reproduce close to that same real risk, not something wildly
+    # different (a loose bound, not exact, since native_pc and pc_final
+    # come from different estimators -- see docs/22).
+    assert baseline["pc_final"] > 1e-5
+
+
+def test_simulate_random_pick_omits_seed_param(client):
+    resp = client.post("/api/simulate")
+    assert resp.status_code == 200
+    assert resp.json()["scenario"]["miss_distance_m"] in KNOWN_MISS_DISTANCES

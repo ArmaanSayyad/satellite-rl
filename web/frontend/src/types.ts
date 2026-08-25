@@ -30,7 +30,16 @@ export interface Decision {
   fuel_after_ms: number;
 }
 
+export interface Scenario {
+  seed: number;
+  miss_distance_m: number;
+  relative_speed_ms: number;
+  native_pc: number;
+  combined_radius_m: number;
+}
+
 export interface SimulationResult {
+  seed: number;
   scenario: {
     miss_distance_m: number;
     relative_speed_ms: number;
@@ -50,6 +59,11 @@ export interface SimulationResult {
     pc_final: number;
     total_fuel_used_ms: number;
     maneuver_count: number;
+    collision_occurred: boolean;
+  };
+  baseline: {
+    policy: string;
+    pc_final: number;
     collision_occurred: boolean;
   };
 }

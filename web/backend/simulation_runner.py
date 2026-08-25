@@ -103,6 +103,55 @@ def discover_scenario_seeds(max_seed: int = 300) -> dict[float, int]:
     return found
 
 
+def list_scenarios() -> list[dict]:
+    """The 7 known real events, with their seeds, for a frontend scenario
+    picker. Sorted by miss distance (closest/most dangerous first).
+    """
+    seeds = discover_scenario_seeds()
+    env = _get_env()
+    out = []
+    for _, row in env._sampler.high_risk_df.iterrows():
+        miss_distance = round(float(row["miss_distance"]), 1)
+        seed = seeds.get(miss_distance)
+        if seed is None:
+            continue
+        out.append(
+            {
+                "seed": seed,
+                "miss_distance_m": float(row["miss_distance"]),
+                "relative_speed_ms": float(row["relative_speed"]),
+                "native_pc": float(row["native_pc"]),
+                "combined_radius_m": float(row["combined_radius"]),
+            }
+        )
+    out.sort(key=lambda r: r["miss_distance_m"])
+    return out
+
+
+def _run_never_maneuver_baseline(env: CollisionAvoidanceEnv, seed: int) -> dict:
+    """Re-run the SAME real scenario (same seed -> same exact, non-
+    augmented geometry, per discover_scenario_seeds' own reliance on this
+    determinism) with a policy that never burns fuel, so the demo can
+    show what the encounter's real risk looked like unmitigated -- the
+    actual baseline docs/27 evaluates the trained policy against, not
+    currently visible anywhere in the UI.
+    """
+    zero_action = np.zeros(3, dtype=np.float32)
+    expected_decisions = len(env.schedule_s) - 1
+    _obs, _info = env.reset(seed=seed)
+    n_steps = 0
+    terminated = truncated = False
+    info: dict = {}
+    while not (terminated or truncated):
+        _obs, _reward, terminated, truncated, info = env.step(zero_action)
+        n_steps += 1
+    return {
+        "policy": "never_maneuver",
+        "pc_final": info.get("pc_final"),
+        "collision_occurred": n_steps < expected_decisions,
+    }
+
+
 def _dense_resample(
     ego_r0, ego_v0, sec_r0, sec_v0, duration_s: float
 ) -> list[dict]:
@@ -126,12 +175,17 @@ def _dense_resample(
     ]
 
 
-def run_simulation() -> dict:
-    """Run one full episode with the trained policy on a randomly-chosen
-    real dangerous scenario, and return the full trajectory + outcome.
+def run_simulation(seed: int | None = None) -> dict:
+    """Run one full episode with the trained policy on a real dangerous
+    scenario, and return the full trajectory + outcome. `seed` selects
+    one of the 7 known scenarios (see list_scenarios()); a random one is
+    drawn if omitted.
     """
     seeds = discover_scenario_seeds()
-    seed = random.choice(list(seeds.values()))
+    if seed is None:
+        seed = random.choice(list(seeds.values()))
+    elif seed not in seeds.values():
+        raise ValueError(f"seed {seed} is not one of the known scenario seeds: {sorted(seeds.values())}")
 
     env = _get_env()
     model = _get_model()
@@ -231,7 +285,13 @@ def run_simulation() -> dict:
     expected_decisions = len(env.schedule_s) - 1
     collision_occurred = len(decisions) < expected_decisions
 
+    # Re-run the identical real scenario with no maneuvers at all, so the
+    # UI can show the trained policy's outcome against the actual
+    # unmitigated risk -- the comparison docs/27 evaluates against.
+    baseline = _run_never_maneuver_baseline(env, seed)
+
     return {
+        "seed": seed,
         "scenario": {
             "miss_distance_m": sample["miss_distance"],
             "relative_speed_ms": sample["relative_speed"],
@@ -253,4 +313,5 @@ def run_simulation() -> dict:
             "maneuver_count": info.get("maneuver_count"),
             "collision_occurred": collision_occurred,
         },
+        "baseline": baseline,
     }
