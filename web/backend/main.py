@@ -1,17 +1,18 @@
 """FastAPI backend for the collision-avoidance demo UI.
 
-Single endpoint: POST /api/simulate runs one full episode with the
-trained policy (satellite_rl.training) on a randomly-chosen real
-historical near-miss and returns the real simulated trajectory +
-outcome. See simulation_runner.py for what "real" means here -- every
-number returned comes from an actual Basilisk physics simulation, not
-a mock or a pre-recorded fixture.
+GET /api/scenarios lists the 7 known real dangerous events. POST
+/api/simulate runs one full episode with the trained policy on one of
+them (a specific ?seed=, or a random one if omitted) and returns the
+real simulated trajectory, outcome, and a never-maneuver baseline run
+on the identical scenario. See simulation_runner.py for what "real"
+means here -- every number returned comes from an actual Basilisk
+physics simulation, not a mock or a pre-recorded fixture.
 """
 
 from contextlib import asynccontextmanager
 
 import simulation_runner
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -47,6 +48,14 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/api/scenarios")
+def scenarios():
+    return simulation_runner.list_scenarios()
+
+
 @app.post("/api/simulate")
-def simulate():
-    return simulation_runner.run_simulation()
+def simulate(seed: int | None = None):
+    try:
+        return simulation_runner.run_simulation(seed=seed)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e

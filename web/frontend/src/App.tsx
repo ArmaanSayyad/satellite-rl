@@ -7,6 +7,9 @@ import OrbitalContextView from "./components/OrbitalContextView";
 import EncounterView from "./components/EncounterView";
 import Dashboard from "./components/Dashboard";
 import MissionTimeline from "./components/MissionTimeline";
+import PlaybackControls from "./components/PlaybackControls";
+import ScenarioPicker from "./components/ScenarioPicker";
+import Legend from "./components/Legend";
 
 type Status = "idle" | "loading" | "ready" | "error";
 
@@ -14,13 +17,14 @@ export default function App() {
   const [status, setStatus] = useState<Status>("idle");
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedSeed, setSelectedSeed] = useState<number | null>(null);
   const playback = useSimulationPlayback(result);
 
   async function handleBegin() {
     setStatus("loading");
     setError(null);
     try {
-      const data = await runSimulation();
+      const data = await runSimulation(selectedSeed ?? undefined);
       setResult(data);
       setStatus("ready");
     } catch (e) {
@@ -28,6 +32,9 @@ export default function App() {
       setStatus("error");
     }
   }
+
+  const pcThreshold = result?.constants.pc_threshold ?? 0;
+  const trainedNeutralized = result ? result.result.pc_final <= pcThreshold : false;
 
   return (
     <div className="app">
@@ -38,6 +45,8 @@ export default function App() {
           historical close approach — physics simulated with Basilisk, not scripted.
         </p>
       </header>
+
+      <ScenarioPicker selectedSeed={selectedSeed} onSelect={setSelectedSeed} disabled={status === "loading"} />
 
       <div className="controls">
         <button className="begin-button" onClick={handleBegin} disabled={status === "loading"}>
@@ -54,27 +63,35 @@ export default function App() {
               speed <strong>{(result.scenario.relative_speed_ms / 1000).toFixed(2)} km/s</strong>
             </span>
             {playback.finished && (
-              <span className={`outcome ${result.result.collision_occurred ? "bad" : "good"}`}>
+              <span className={`outcome ${result.result.collision_occurred || !trainedNeutralized ? "bad" : "good"}`}>
                 {result.result.collision_occurred
                   ? "COLLISION OCCURRED"
-                  : `COLLISION AVOIDED — final Pc ${result.result.pc_final.toExponential(2)}, fuel used ${result.result.total_fuel_used_ms.toFixed(2)} m/s`}
+                  : trainedNeutralized
+                    ? `RISK NEUTRALIZED — final Pc ${result.result.pc_final.toExponential(2)}, fuel used ${result.result.total_fuel_used_ms.toFixed(2)} m/s`
+                    : `RISK NOT FULLY NEUTRALIZED — final Pc ${result.result.pc_final.toExponential(2)} still exceeds threshold`}
               </span>
             )}
           </div>
 
+          <PlaybackControls playback={playback} />
           <MissionTimeline result={result} playback={playback} />
           <Dashboard result={result} playback={playback} />
+          <Legend />
 
           <div className="views">
             <OrbitalContextView
               frame={playback.frame}
+              missionTimeS={playback.missionTimeS}
               earthRadiusM={result.constants.earth_radius_m}
               denseFrames={result.dense_frames}
+              maneuversSoFar={playback.maneuversSoFar}
             />
             <EncounterView
               frame={playback.frame}
+              missionTimeS={playback.missionTimeS}
               denseFrames={result.dense_frames}
               combinedRadiusM={result.scenario.combined_radius_m}
+              maneuversSoFar={playback.maneuversSoFar}
             />
           </div>
         </>
@@ -82,8 +99,8 @@ export default function App() {
 
       {!result && status !== "loading" && (
         <div className="empty-state">
-          Click <strong>Begin Simulation</strong> to fly a real, historically-dangerous conjunction and watch the
-          trained policy decide whether and when to maneuver.
+          Pick a real event above (or leave it on Random), then click <strong>Begin Simulation</strong> to fly it
+          and watch the trained policy decide whether and when to maneuver.
         </div>
       )}
     </div>

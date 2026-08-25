@@ -64,3 +64,35 @@ export function frameAtTime(frames: Frame[], t: number): Frame {
   }
   return interpolateFrame(frames[lo], frames[hi], t);
 }
+
+/** Split a dense-frame trajectory into what's already been "flown" as of
+ * missionTimeS (drawn at full opacity, ending exactly at the current
+ * interpolated position so the trail tip matches the marker) and a short
+ * faded preview beyond it (drawn at low opacity). Used so trajectories
+ * reveal progressively during playback rather than showing the whole
+ * (already-decided) outcome from frame one.
+ */
+export function splitFramesAtTime(
+  frames: Frame[],
+  missionTimeS: number,
+  previewWindowS: number
+): { traveled: Frame[]; preview: Frame[] } {
+  if (frames.length === 0) return { traveled: [], preview: [] };
+
+  const traveled: Frame[] = [];
+  let i = 0;
+  for (; i < frames.length && frames[i].t_s <= missionTimeS; i++) {
+    traveled.push(frames[i]);
+  }
+  const current = frameAtTime(frames, missionTimeS);
+  if (traveled.length === 0 || traveled[traveled.length - 1].t_s < missionTimeS) {
+    traveled.push(current);
+  }
+
+  const previewEnd = missionTimeS + previewWindowS;
+  const preview: Frame[] = [current];
+  for (; i < frames.length && frames[i].t_s <= previewEnd; i++) {
+    preview.push(frames[i]);
+  }
+  return { traveled, preview };
+}

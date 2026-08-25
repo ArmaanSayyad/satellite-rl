@@ -8,14 +8,19 @@ it burns fuel to dodge.
 
 Two pieces:
 
-- `backend/` — FastAPI service that runs one real episode (same
-  physics/policy as the rest of the repo — no mocking) and returns a
-  dense, animatable trajectory.
+- `backend/` — FastAPI service that lists the 7 known real events
+  (`GET /api/scenarios`) and runs one real episode on a chosen or
+  random one (`POST /api/simulate?seed=...`), same physics/policy as
+  the rest of the repo — no mocking. Each run also re-simulates the
+  identical scenario with a never-maneuver baseline, for comparison.
 - `frontend/` — React + Three.js UI: two 3D panels (full orbital
   context, and a close-up of the actual encounter geometry, since the
-  two are 4-5 orders of magnitude apart in scale), a live stats
-  dashboard (fuel, speed, gravitational acceleration, separation,
-  collision probability), and a maneuver timeline.
+  two are 4-5 orders of magnitude apart in scale, each with real Earth
+  imagery, progressive trajectory reveal, and a live separation line),
+  a scenario picker, playback controls (play/pause/speed/seek/step),
+  a live stats dashboard with an inline glossary, a decision timeline
+  with per-decision explanations, and a trained-policy-vs-no-maneuver
+  comparison.
 
 ## Prerequisite: a trained model checkpoint
 
