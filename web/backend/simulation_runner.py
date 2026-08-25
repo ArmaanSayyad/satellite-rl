@@ -5,10 +5,10 @@ throughout this project, not interpolated), the policy's actual
 decisions, and the resulting outcome.
 
 Scenario selection: draws one of the 7 real historical events confirmed
-(docs/27-riskaware-training-results.md) to actually cross
-pc_threshold=1e-4 -- the same targeted evaluation setup used to validate
-the trained policy, not a random real event (most real events are safe,
-per docs/23; a random pick would usually show "nothing happens").
+(TECHNICAL.md §7) to actually cross pc_threshold=1e-4 -- the same
+targeted evaluation setup used to validate the trained policy, not a
+random real event (most real events are safe, per TECHNICAL.md §6; a
+random pick would usually show "nothing happens").
 `high_risk_augment=False` -- the real event's own exact geometry, not a
 resampled variant, so what's shown is a genuine historical near-miss.
 """
@@ -29,8 +29,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 MODEL_PATH = str(REPO_ROOT / "runs" / "ppo_stage2_riskaware_run1")
 
 SCHEDULE_DAYS_BEFORE_TCA = (0.2, 0.1, 0.05, 0.01, 0.0)
-# The exact pool_fraction found (docs/27) to isolate precisely the 7 real
-# events ESA-anchored-ranked above pc_threshold=1e-4, out of 8,672.
+# The exact pool_fraction found (TECHNICAL.md §7) to isolate precisely
+# the 7 real events ESA-anchored-ranked above pc_threshold=1e-4, out of 8,672.
 HIGH_RISK_POOL_FRACTION = 0.00081
 TARGETING_SEED = 999  # held-out from training's targeting_seed=0
 
@@ -75,7 +75,7 @@ def _get_env() -> CollisionAvoidanceEnv:
 def discover_scenario_seeds(max_seed: int = 300) -> dict[float, int]:
     """Find one seed producing each of the 7 real events in the
     ESA-anchored-ranked pool, by trying seeds in order and keying on
-    each event's (unique, per docs/27) real miss_distance. Cached after
+    each event's (unique, per TECHNICAL.md §7) real miss_distance. Cached after
     the first call -- the pool is fixed (built from the static
     geometry_events.csv), so this mapping never changes at runtime.
     """
@@ -133,8 +133,8 @@ def _run_never_maneuver_baseline(env: CollisionAvoidanceEnv, seed: int) -> dict:
     augmented geometry, per discover_scenario_seeds' own reliance on this
     determinism) with a policy that never burns fuel, so the demo can
     show what the encounter's real risk looked like unmitigated -- the
-    actual baseline docs/27 evaluates the trained policy against, not
-    currently visible anywhere in the UI.
+    actual baseline TECHNICAL.md §7 evaluates the trained policy
+    against, not currently visible anywhere in the UI.
     """
     zero_action = np.zeros(3, dtype=np.float32)
     expected_decisions = len(env.schedule_s) - 1
@@ -271,8 +271,8 @@ def run_simulation(seed: int | None = None) -> dict:
         # position, so pre_ego_r is already exactly the post-maneuver
         # position -- only the velocity needs recovering. This can differ
         # very slightly from the true post-maneuver velocity (J2 vs full
-        # Basilisk fidelity, the same gap docs/26 investigated at length)
-        # but at animation-smoothness precision, not decision-relevant
+        # Basilisk fidelity, the same gap TECHNICAL.md §6 investigated
+        # at length) but at animation-smoothness precision, not decision-relevant
         # precision, that's immaterial -- the recovered trajectory is
         # still real physics, not an interpolation, and reconnects almost
         # exactly with the true endpoint keyframe either way.
@@ -287,7 +287,7 @@ def run_simulation(seed: int | None = None) -> dict:
 
     # Re-run the identical real scenario with no maneuvers at all, so the
     # UI can show the trained policy's outcome against the actual
-    # unmitigated risk -- the comparison docs/27 evaluates against.
+    # unmitigated risk -- the comparison TECHNICAL.md §7 evaluates against.
     baseline = _run_never_maneuver_baseline(env, seed)
 
     return {

@@ -1,5 +1,5 @@
 """Reduce a 3D conjunction geometry to the 2D encounter-plane representation
-used by the Pc computation. See docs/04-collision-probability.md.
+used by the Pc computation. See TECHNICAL.md §3 (System architecture).
 """
 
 from dataclasses import dataclass

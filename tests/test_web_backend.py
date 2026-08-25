@@ -106,10 +106,11 @@ def test_simulate_returns_real_episode_for_chosen_seed(client):
     assert baseline["policy"] == "never_maneuver"
     assert isinstance(baseline["collision_occurred"], bool)
     # The 38m event is a genuinely dangerous one (native_pc > 1e-4, per
-    # docs/27) -- with literally no maneuver, the live re-simulation
-    # should reproduce close to that same real risk, not something wildly
-    # different (a loose bound, not exact, since native_pc and pc_final
-    # come from different estimators -- see docs/22).
+    # TECHNICAL.md §7) -- with literally no maneuver, the live
+    # re-simulation should reproduce close to that same real risk, not
+    # something wildly different (a loose bound, not exact, since
+    # native_pc and pc_final come from different estimators -- see
+    # TECHNICAL.md §6).
     assert baseline["pc_final"] > 1e-5
 
 

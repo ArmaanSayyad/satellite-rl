@@ -1,8 +1,8 @@
 """Shared utilities for loading and interpreting the ESA Kelvins CDM dataset.
 
 Column semantics documented here were established empirically (Phase 1,
-see docs/14-pc-validation-results.md and docs/05-datasets.md's
-"Corrections" note), not assumed from the original secondhand research:
+see TECHNICAL.md §2, Data), not assumed from the original secondhand
+research:
 `time_to_tca` is in days, `risk` is log10(Pc) floored at -30, covariance
 columns include full off-diagonal cross-terms in the standard CCSDS CDM
 layout, and there is no direct hard-body-radius column (we derive one from
@@ -45,8 +45,8 @@ def build_covariance_from_cdm_row(row: pd.Series, prefix: str) -> np.ndarray:
 def combined_radius_from_rcs(row: pd.Series) -> float:
     """Approximate combined hard-body radius from radar cross-section
     (m^2), treating each object as an equivalent circular cross-section.
-    See docs/14-pc-validation-results.md for why this is an approximation,
-    not ground truth, and how well it validated empirically.
+    See TECHNICAL.md §2 (Data) for why this is an approximation, not
+    ground truth.
     """
     r_t = np.sqrt(row["t_rcs_estimate"] / np.pi)
     r_c = np.sqrt(row["c_rcs_estimate"] / np.pi)

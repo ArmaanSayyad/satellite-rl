@@ -1,27 +1,29 @@
 """The collision-avoidance Gymnasium environment.
 
-Three modes, curriculum stages 1-3 per docs/03-scenario-design.md and
-docs/09-episode-design.md:
+Three modes, curriculum stages 1-3 per TECHNICAL.md §4 (Environment
+design):
 - `sample_geometry=False` (default, Phase 4): a single fixed encounter
   geometry and fixed decision-point schedule, constant across all
   episodes.
 - `sample_geometry=True, evolve_uncertainty=False` (Phase 5c, curriculum
-  stage 2, see docs/19-curriculum-stage-2.md): a fresh geometry -- miss
-  distance, relative speed, sigma, combined radius -- sampled from the
-  real Kelvins-derived bootstrap table every reset, but still on the
-  fixed decision-point schedule and with sigma constant within an episode.
+  stage 2): a fresh geometry -- miss distance, relative speed, sigma,
+  combined radius -- sampled from the real Kelvins-derived bootstrap
+  table every reset, but still on the fixed decision-point schedule and
+  with sigma constant within an episode. This is the mode actually used
+  for the trained checkpoint shipped with this repo.
 - `sample_geometry=True, evolve_uncertainty=True` (Phase 5d, curriculum
-  stage 3, see docs/20-curriculum-stage-3.md): additionally samples a
-  real per-event CDM-timing schedule (irregular, variable length) and
-  lets sigma evolve within the episode (geometric interpolation between
-  the sampled event's real first-CDM and last-CDM covariance magnitude)
-  -- the actual v1 target environment per docs/03.
+  stage 3): additionally samples a real per-event CDM-timing schedule
+  (irregular, variable length) and lets sigma evolve within the episode
+  (geometric interpolation between the sampled event's real first-CDM
+  and last-CDM covariance magnitude) -- the full v1 target environment
+  by design, but never actually trained on (too slow single-process,
+  see TECHNICAL.md §4's curriculum note).
 
 Wraps bsk_rl's GeneralSatelliteTasking (two satellites: ego + a passive
 secondary) following the same thin-subclass pattern bsk_rl's own
-SatelliteTasking uses for a single satellite (see docs/17-env-
-implementation-notes.md) -- exposing only the ego's action/observation
-externally, injecting the secondary's fixed no-op action internally.
+SatelliteTasking uses for a single satellite -- exposing only the ego's
+action/observation externally, injecting the secondary's fixed no-op
+action internally.
 """
 
 import json
@@ -38,12 +40,13 @@ from .satellites import EGO_NAME, SECONDARY_NAME, SecondarySatellite, make_ego_s
 from .scenario_sampling import SecondaryScenarioSampler
 
 UTC_INIT = "2018 SEP 29 21:00:00.000 (UTC)"
-DEADZONE_MS = 1e-3  # see docs/07-action-space.md: deadzone for maneuver-count reporting
+DEADZONE_MS = 1e-3  # deadzone for maneuver-count reporting -- see TECHNICAL.md §4
 
 
 def _risk_penalty(pc: float, threshold: float) -> float:
-    """Nonlinear thresholded risk penalty, per docs/08-reward-function.md:
-    roughly linear below the operational Pc threshold, steeper above it.
+    """Nonlinear thresholded risk penalty, per TECHNICAL.md §4 (the reward
+    formula): roughly linear below the operational Pc threshold, steeper
+    above it.
     """
     if pc <= 0.0:
         return 0.0
@@ -88,7 +91,7 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
                 relative_speed, sigma, combined_radius) from the real
                 Kelvins-derived bootstrap table
                 (data/fitted/geometry_events.csv) every reset (curriculum
-                stage 2, docs/19-curriculum-stage-2.md), ignoring
+                stage 2, TECHNICAL.md §4), ignoring
                 miss_distance_m/relative_speed_ms/combined_radius_m/
                 sigma_m below. If False (default), those fixed values are
                 used for every episode (curriculum stage 1, Phase 4).
@@ -97,7 +100,7 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
                 (ignoring `schedule_days_before_tca`) and let sigma evolve
                 within the episode via geometric interpolation between the
                 sampled event's real first/last covariance magnitude
-                (curriculum stage 3, docs/20-curriculum-stage-3.md).
+                (curriculum stage 3, TECHNICAL.md §4).
             miss_distance_m, relative_speed_ms, orientation_angle_rad:
                 the fixed encounter geometry, used only when
                 `sample_geometry=False`.
@@ -122,7 +125,7 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
                 instead).
             max_dv_ms: per-maneuver Δv bound.
             risk_weight, fuel_weight, disruption_weight, pc_threshold:
-                reward weights, see docs/08-reward-function.md.
+                reward weights, see TECHNICAL.md §4 (the reward formula).
             targeting_seed: seed for the targeting solver's relative-
                 velocity-direction sampling (see scenario/targeting.py),
                 and, when `sample_geometry=True`, also for which real
@@ -140,10 +143,10 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
                 get their targeting solve corrected against real Basilisk
                 dynamics so small intended miss distances are actually
                 achieved (`high_risk_precise_targeting`, default True --
-                see docs/26-precise-targeting.md). Default
-                `high_risk_fraction=0.0` -- unmodified real-distribution
-                sampling. See docs/25-augmentation-and-threshold-
-                findings.md and docs/24-risk-stratified-sampling.md: real
+                see TECHNICAL.md §6, "Five bugs standing between...").
+                Default `high_risk_fraction=0.0` -- unmodified
+                real-distribution sampling. See TECHNICAL.md §6 ("Chasing
+                one real actionable event to seven"): real
                 actionable-risk events are rare enough that uniform
                 sampling essentially never exposes training to one; this
                 is a deliberate, explicit, tunable departure from the
@@ -257,8 +260,8 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
             # updated self.schedule_s for the current episode (see below).
             time_limit=lambda: self.schedule_s[0] + 1000.0,
             terminate_on_time_limit=False,
-            failure_penalty=-1000.0,  # safety-net signal for a real ConjunctionDynModel collision, see docs/09
-            # Phase 7e (docs/26-precise-targeting.md): `utc_init` in each
+            failure_penalty=-1000.0,  # safety-net signal for a real ConjunctionDynModel collision, see TECHNICAL.md §4
+            # Phase 7e (TECHNICAL.md §6, "Five bugs..."): `utc_init` in each
             # satellite's own sat_args above does NOT reach the world's
             # SPICE setup -- bsk_rl's GeneralSatelliteTasking.reset()
             # reads `self.world_args["utc_init"]` unconditionally
@@ -286,8 +289,8 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
     def action_space(self) -> spaces.Box:
         """Δv only (m/s, ego's own Hill/RTN frame) -- duration is env-
         controlled (fixed to the schedule interval), not agent-chosen; a
-        deliberate Phase 4 simplification of docs/07-action-space.md's
-        original 4D design, noted there.
+        deliberate Phase 4 simplification of the action space's original
+        4D design (see TECHNICAL.md §4).
         """
         return spaces.Box(low=-self.max_dv_ms, high=self.max_dv_ms, shape=(3,), dtype=np.float32)
 
@@ -311,7 +314,7 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
                 # resets instead -- that's what curriculum sampling wants
                 # (a different real event each episode), and doing so is
                 # itself the documented, deliberate part of the design
-                # (see docs/19-curriculum-stage-2.md) -- only the "same
+                # (see TECHNICAL.md §4) -- only the "same
                 # seed must reproduce" contract needed fixing, not the
                 # underlying continued-advancement behavior.
                 self._sampler.rng = np.random.default_rng(seed)
@@ -334,7 +337,7 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
         else:
             # Fixed-scenario mode (curriculum stage 1) has no real-event
             # anisotropy to preserve -- sigma_m is a single deliberately
-            # simple isotropic value, per docs/03-scenario-design.md.
+            # simple isotropic value.
             # Setting both axes equal makes observations.py's anisotropic
             # covariance construction reduce to the isotropic case exactly
             # (diag(s, s) embedded via an orthonormal basis is s*I), so no
@@ -343,7 +346,7 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
             self.satellites[0]._pc_sigma_z = self._fixed_sigma_m
             self.satellites[0]._pc_combined_radius = self._fixed_combined_radius_m
         # self.satellites persists across resets (only .dynamics/.fsw get
-        # rebuilt) -- see docs/17-env-implementation-notes.md.
+        # rebuilt).
         self.satellites[0]._time_to_tca_s = self.schedule_s[0]
         tuple_obs, info = super().reset(seed=seed, options=options)
         return tuple_obs[0], info

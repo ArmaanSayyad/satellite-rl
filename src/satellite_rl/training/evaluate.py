@@ -1,8 +1,8 @@
 """Light post-training sanity check: does the trained policy actually
 behave differently from simple baselines? The full baseline suite
-(threshold heuristic, hindsight-optimal oracle) is Phase 7's job per
-docs/11-evaluation.md -- this only checks that Phase 6's training run had
-a real, measurable effect, not a proper evaluation.
+(threshold heuristic, hindsight-optimal oracle, see full_evaluation.py
+and TECHNICAL.md §7) is a separate, proper evaluation -- this only
+checks that a training run had a real, measurable effect.
 """
 
 from collections.abc import Callable

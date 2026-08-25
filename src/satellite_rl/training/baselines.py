@@ -1,10 +1,11 @@
-"""Baselines 3 and 4 from docs/11-evaluation.md: the threshold heuristic
-and the hindsight-optimal oracle. Baselines 1/2 (never-maneuver,
-always-max-thrust) and the random policy are simple enough to stay
-inline in evaluate.py; these two need real logic.
+"""Baselines 3 and 4: the threshold heuristic and the hindsight-optimal
+oracle (see TECHNICAL.md §7, Results, for the baseline suite and what
+each one showed). Baselines 1/2 (never-maneuver, always-max-thrust) and
+the random policy are simple enough to stay inline in evaluate.py;
+these two need real logic.
 
-Observation layout (verified empirically against a live env, not assumed
-from the observation_spec order -- see docs/22-evaluation-results.md):
+Observation layout (verified empirically against a live env, not
+assumed from the observation_spec order -- see TECHNICAL.md §6):
 `obs[0]` is `collision_prob` (the current predicted Pc), matching
 `env._pc_fn`'s own return value exactly for the same satellite state.
 """
@@ -18,8 +19,8 @@ PC_OBS_INDEX = 0
 # bounded, immediately-effective axis), versus in-track burns which rely
 # on secular along-track drift accumulating over longer lead times than
 # stage 2's short schedule (0.2 days down to TCA) provides. This is a
-# deliberate simplification of docs/11's "e.g. computed via a simple
-# closed-form miss-distance-increase targeting" -- no attempt is made to
+# deliberate simplification of "e.g. computed via a simple closed-form
+# miss-distance-increase targeting" -- no attempt is made to
 # solve for the direction that actually increases miss distance for a
 # specific geometry, just an operationally-plausible fixed axis. Doesn't
 # guarantee the burn helps for every sampled geometry; that's a real,
@@ -47,7 +48,7 @@ def hindsight_oracle_fuel(
     max_iters: int = 12,
 ) -> tuple[float, bool]:
     """Bisection search (real re-simulation, not a closed-form derivation
-    -- see docs/22-evaluation-results.md for why) for the minimum-
+    -- see TECHNICAL.md §7 for why) for the minimum-
     magnitude single first-decision-step radial burn that achieves final
     Pc <= pc_threshold, for one fixed held-out scenario (same `seed`
     reproduces the same scenario, per the env's reset(seed=X) contract).

@@ -1,8 +1,8 @@
 """Tests for satellite_rl.scenario.tca_refinement.
 
 Requires the full bsk_rl/Basilisk stack -- skipped automatically in the
-lightweight CI environment (see docs/12-architecture.md), same pattern as
-tests/test_env.py.
+lightweight CI environment (see TECHNICAL.md §3, System architecture),
+same pattern as tests/test_env.py.
 """
 
 import numpy as np
@@ -40,8 +40,8 @@ def test_refine_tca_offset_is_small_relative_to_total_duration():
     """The refined TCA should be close to the nominal one -- large
     corrections would indicate the targeting solver's assumed TCA is
     badly wrong, not just imprecise (a much bigger problem than this
-    refinement step is meant to handle). Empirically (docs/18) observed
-    offsets are at most tens of seconds against multi-hour-to-day
+    refinement step is meant to handle). Empirically (TECHNICAL.md §6)
+    observed offsets are at most tens of seconds against multi-hour-to-day
     durations.
     """
     ego_r0, ego_v0 = example_leo_orbit()
@@ -78,11 +78,11 @@ def test_refine_tca_returns_expected_keys_and_types():
     assert result["nominal_separation_m"] >= 0.0
 
 
-# docs/26-precise-targeting.md: J2-only targeting is off by ~100-200m at
+# TECHNICAL.md §6: J2-only targeting is off by ~100-200m at
 # these short (0.2-day) lead times, regardless of target size -- invisible
 # at km-scale miss distances (everything above), but it swamps the
 # tens-of-meters targets real high-risk events need. Test cases below
-# span the validated range (2-642m, 0.2-3 day lead times, docs/26).
+# span the validated range (2-642m, 0.2-3 day lead times).
 # max_expected_iters: 0.2-day (the actual curriculum-stage-2 production
 # regime, per env/scenario_sampling.py) converges in 1-3; longer lead
 # times converge more slowly (Sun's third-body perturbation makes the
@@ -93,7 +93,7 @@ def test_refine_tca_returns_expected_keys_and_types():
 # diverging or oscillating). Measured against the raw-3D error metric
 # (see correct_targeting_geometry's docstring) -- an earlier 2D-
 # projected version of this metric had a blind spot that made this same
-# case falsely look converged by iteration 7 (docs/26).
+# case falsely look converged by iteration 7 (TECHNICAL.md §6).
 @pytest.mark.parametrize(
     "miss_m,angle_rad,speed_ms,tca_days,seed,max_expected_iters",
     [
@@ -142,8 +142,8 @@ def test_correct_targeting_geometry_only_changes_t0_state():
 def test_correct_targeting_geometry_improves_on_uncorrected_j2_solve():
     """The whole point: the corrected state's ACTUAL Basilisk-simulated
     miss distance must land much closer to target than the raw J2 solve
-    did (docs/26 measured ~100-200m raw error at this lead time for
-    small targets).
+    did (TECHNICAL.md §6 measured ~100-200m raw error at this lead time
+    for small targets).
     """
     ego_r0, ego_v0 = example_leo_orbit()
     rng = np.random.default_rng(1)

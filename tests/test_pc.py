@@ -1,5 +1,5 @@
-"""Validation tests for the Pc module (docs/04-collision-probability.md,
-docs/13-roadmap.md Phase 1).
+"""Validation tests for the Pc module (Phase 1; see TECHNICAL.md §6 for
+the real-data validation results).
 
 Validation strategy, in order of trustworthiness -- deliberately NOT based
 on "known worked examples" recalled from a paper, since we can't be fully
@@ -113,7 +113,7 @@ def test_chan_vs_foster_elliptical_deviation(case):
     print(f"case={case} foster={pc_f:.6g} chan={pc_c:.6g} abs_dev={deviation:.3g}")
     # Generous bound for Phase 1 -- tighten once we have a documented
     # sense of typical deviation magnitude across the realistic parameter
-    # range (see docs/04-collision-probability.md).
+    # range.
     assert deviation < 0.05
 
 

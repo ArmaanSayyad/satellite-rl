@@ -1,11 +1,11 @@
 """Tests for satellite_rl.scenario.distributions.
 
 Uses synthetic data throughout -- the real Kelvins dataset (232 MB) is not
-part of the repo or CI (see docs/05-datasets.md), so functions that load it
-directly (fit_geometry_distributions, fit_covariance_shrink_ratio,
+part of the repo or CI (see TECHNICAL.md §2, Data), so functions that
+load it directly (fit_geometry_distributions, fit_covariance_shrink_ratio,
 extract_schedule_library) are exercised manually via
-`python -m satellite_rl.scenario.distributions` (see
-docs/15-distribution-fitting-results.md for real-data results), not here.
+`python -m satellite_rl.scenario.distributions` (see TECHNICAL.md §2
+for real-data results), not here.
 """
 
 import numpy as np
@@ -32,8 +32,8 @@ def test_fit_lognormal_recovers_known_parameters():
     assert fitted.n_samples == 50_000
     # A correctly-specified lognormal fit on genuinely lognormal data
     # should NOT be rejected by KS at a reasonable significance level --
-    # this is the contrapositive check to docs/15's finding that the real
-    # Kelvins data does reject: confirms fit_lognormal's fitting/testing
+    # this is the contrapositive check to TECHNICAL.md §2's finding that
+    # the real Kelvins data does reject: confirms fit_lognormal's fitting/testing
     # machinery itself is correct, not that real data must pass.
     assert fitted.ks_pvalue > 0.01
 
@@ -134,8 +134,8 @@ def test_sample_covariance_evolution_bootstrap_returns_a_real_pair():
         key = (s["sigma_x_first"], s["sigma_z_first"], s["sigma_x_last"], s["sigma_z_last"])
         assert key in real_rows
         # A real event's covariance should generally shrink (first > last)
-        # -- not asserted as a hard invariant (docs/03 notes real events
-        # aren't always monotonic), just checked here since this specific
+        # -- not asserted as a hard invariant (real events aren't always
+        # monotonic, per TECHNICAL.md §3), just checked here since this specific
         # synthetic fixture was constructed to shrink, catching a
         # first/last column mixup.
         assert s["sigma_x_first"] > s["sigma_x_last"]

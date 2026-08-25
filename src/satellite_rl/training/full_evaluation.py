@@ -1,10 +1,10 @@
-"""Phase 7: the full baseline suite + metric suite from docs/11-
-evaluation.md, run against the Phase 6 checkpoint (`runs/ppo_stage2_
-run1`) on a held-out (`targeting_seed=999`) set of real Kelvins-derived
-scenarios. Not part of the automated test suite -- needs bsk_rl/Basilisk
-and a real trained model, like training/evaluate.py; run manually via
-`python -m satellite_rl.training.full_evaluation`. See docs/22-
-evaluation-results.md for the real results and their interpretation.
+"""Phase 7: the full baseline suite + metric suite, run against a
+trained checkpoint on a held-out (`targeting_seed=999`) set of real
+Kelvins-derived scenarios. Not part of the automated test suite --
+needs bsk_rl/Basilisk and a real trained model, like
+training/evaluate.py; run manually via
+`python -m satellite_rl.training.full_evaluation`. See TECHNICAL.md §6
+and §7 for the real results and their interpretation.
 
 `run_scenario`/`percentile_stats` don't import bsk_rl or stable-
 baselines3 at module level, so tests/test_training.py can exercise their
@@ -22,8 +22,9 @@ DEADZONE_MS = 1e-3  # matches env.collision_avoidance_env.DEADZONE_MS
 def run_scenario(env, seed: int, action_fn) -> dict:
     """Run one episode, tracking not just the terminal outcome but which
     step (if any) the policy first maneuvered on -- for the "timing
-    behavior" metric in docs/11, which the base env's info dict doesn't
-    expose directly (only the running total), so it's derived here from
+    behavior" metric (see TECHNICAL.md §7), which the base env's info
+    dict doesn't expose directly (only the running total), so it's
+    derived here from
     consecutive fuel readings instead of touching env code.
     """
     obs, info = env.reset(seed=seed)
@@ -74,9 +75,10 @@ def run_full_evaluation(
     heuristic, hindsight oracle) plus the trained policy and a random
     policy, over the same `n_episodes` held-out real-event scenarios
     (matched seeds across all policies, for a fair paired comparison),
-    and report the full docs/11 metric suite -- including native-risk
-    (never-maneuver Pc) stratification, since the real Kelvins
-    distribution is dominated by low-risk events (docs/14) and an
+    and report the full metric suite (TECHNICAL.md §7) -- including
+    native-risk (never-maneuver Pc) stratification, since the real
+    Kelvins distribution is dominated by low-risk events (TECHNICAL.md
+    §6) and an
     unstratified mean would dilute exactly the high-risk cases where a
     good policy should look most different from doing nothing.
     """

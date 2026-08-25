@@ -1,8 +1,7 @@
-"""Couples bsk_rl's per-parameter sat_args randomizer callables (see
-docs/17-env-implementation-notes.md: `sat_args` values can be functions,
-re-evaluated fresh on every `reset()`) to a single, jointly-consistent
-scenario sample per episode -- curriculum stages 2 and 3, see
-docs/19-curriculum-stage-2.md and docs/20-curriculum-stage-3.md.
+"""Couples bsk_rl's per-parameter sat_args randomizer callables (`sat_
+args` values can be functions, re-evaluated fresh on every `reset()`)
+to a single, jointly-consistent scenario sample per episode --
+curriculum stages 2 and 3, see TECHNICAL.md §4 (Environment design).
 
 bsk_rl evaluates each sat_args callable independently
 (`generate_sat_args`: `{k: v() if callable(v) else v for k, v in ...}`),
@@ -36,11 +35,10 @@ MIN_DECISION_INTERVAL_S = 60.0  # merge real CDM timestamps closer together than
 def _clean_schedule(raw_days: list) -> list:
     """Real per-event time_to_tca sequences (days) can have near-duplicate
     timestamps, occasional NEGATIVE values (some real CDMs are issued
-    slightly after TCA -- confirmed in docs/14-pc-validation-results.md,
-    min observed time_to_tca was -0.15 days), and don't necessarily
-    include an exact 0.0 (TCA) point. Drop negative entries (our schedule
-    model only covers decision points before TCA -- see
-    docs/09-episode-design.md), dedupe/sort descending, merge points
+    slightly after TCA -- min observed time_to_tca was -0.15 days), and
+    don't necessarily include an exact 0.0 (TCA) point. Drop negative
+    entries (our schedule model only covers decision points before TCA
+    -- see TECHNICAL.md §4), dedupe/sort descending, merge points
     closer than MIN_DECISION_INTERVAL_S (bsk_rl's ImpulsiveThrustHill
     enforces a minimum drift duration of 2*sim_rate -- real gaps smaller
     than that would silently get stretched, desyncing our own schedule
@@ -66,13 +64,13 @@ def _clean_schedule(raw_days: list) -> list:
 
 class SecondaryScenarioSampler:
     """Samples a fresh conjunction scenario (geometry from the real
-    Kelvins-derived bootstrap table, per docs/15-distribution-fitting-
-    results.md) each time `generation` is incremented, and exposes it as
-    bsk_rl sat_args callables plus the resulting Pc-relevant parameters.
+    Kelvins-derived bootstrap table, per TECHNICAL.md §2, Data) each
+    time `generation` is incremented, and exposes it as bsk_rl sat_args
+    callables plus the resulting Pc-relevant parameters.
 
     Deliberately deepcopy-proof (see `__deepcopy__` below) -- found in
-    Phase 7e (docs/26-precise-targeting.md) to be load-bearing, not
-    defensive: bsk_rl's `GeneralSatelliteTasking.__init__` does
+    Phase 7e (TECHNICAL.md §6, "Five bugs standing between...") to be
+    load-bearing, not defensive: bsk_rl's `GeneralSatelliteTasking.__init__` does
     `self.satellites = deepcopy(satellites)`, and since the secondary
     satellite's `sat_args["rN"]`/`["vN"]` are BOUND METHODS on an
     instance of this class, a plain deepcopy recursively clones the
@@ -86,8 +84,8 @@ class SecondaryScenarioSampler:
     subsequent call -- meaning the secondary satellite's ACTUAL position
     was frozen to whatever the very first sample happened to be, for the
     entire lifetime of the env object, regardless of seed, targeting_
-    seed, or any reset() logic. Confirmed empirically (docs/26): across
-    3 resets with 3 different seeds, `env._sampler.generation` correctly
+    seed, or any reset() logic. Confirmed empirically (TECHNICAL.md §6):
+    across 3 resets with 3 different seeds, `env._sampler.generation` correctly
     advanced 1->2->3, while the orphaned clone bound to the satellite's
     own `rN()` stayed at `generation=0` and returned the byte-identical
     result every time. `sigma_x`/`sigma_z`/`combined_radius`/schedule
@@ -125,8 +123,9 @@ class SecondaryScenarioSampler:
                 geometry row from the elevated-risk pool instead of
                 uniformly from the full real table. Default 0.0 --
                 unmodified uniform-real-distribution sampling, the
-                pre-Phase-7c behavior. See docs/24-risk-stratified-
-                sampling.md: real actionable-risk events are ~1-in-8,672
+                pre-Phase-7c behavior. See TECHNICAL.md §6, "Chasing one
+                real actionable event to seven": real actionable-risk
+                events are ~1-in-8,672
                 by our own recomputed `native_pc`, too rare for uniform
                 sampling to expose training to one in any practical
                 budget. This is a deliberate, explicit, tunable departure
@@ -137,9 +136,9 @@ class SecondaryScenarioSampler:
                 fraction of `geometry_df`'s rows -- ranked by
                 `max(native_pc, esa_reported_pc)` (not a value threshold,
                 which would tie on the majority of rows sitting at
-                Pc=0; and not `native_pc` alone, since docs/25-
-                augmentation-and-threshold-findings.md found our own
-                recomputed Pc materially under-counts risk relative to
+                Pc=0; and not `native_pc` alone, since TECHNICAL.md §6
+                ("Chasing one real actionable event to seven") found our
+                own recomputed Pc materially under-counts risk relative to
                 ESA's own reported assessment for several real events --
                 using the max of both is a safety-oriented choice: either
                 signal suggesting real risk is enough to include a row).
@@ -159,16 +158,18 @@ class SecondaryScenarioSampler:
                 every time it's drawn, risking the policy memorizing those
                 specific instances rather than learning to generalize.
                 Default True; only takes effect when `high_risk_fraction
-                > 0`. See docs/25 for the empirical validation (how many
-                actionable variants this produces, and how dissimilar).
+                > 0`. See TECHNICAL.md §6 for the empirical validation
+                (how many actionable variants this produces, and how
+                dissimilar).
             high_risk_precise_targeting: when drawing from the elevated-
                 risk pool, correct the J2 targeting solver's initial
                 state via `tca_refinement.correct_targeting_geometry`
                 (1-3 extra Basilisk calls, ~1.5-3s) so the actual
                 simulated encounter lands near the intended small miss
-                distance instead of ~100-200m off (docs/26-precise-
-                targeting.md: this error is invisible at the km-scale
-                miss distances every other draw uses, but swamps the
+                distance instead of ~100-200m off (TECHNICAL.md §6,
+                "Five bugs standing between..." -- this error is
+                invisible at the km-scale miss distances every other
+                draw uses, but swamps the
                 tens-of-meters targets high-risk real events need).
                 Default True; only takes effect when `high_risk_fraction
                 > 0`, since that's the only regime where target miss
@@ -231,8 +232,8 @@ class SecondaryScenarioSampler:
             schedule_s = [self.nominal_tca_s, 0.0] if self.nominal_tca_s != 0.0 else [0.0]
         nominal_tca_s = schedule_s[0]
 
-        # Elevated-risk stratified draw (docs/24-risk-stratified-
-        # sampling.md): with probability high_risk_fraction, draw from
+        # Elevated-risk stratified draw (TECHNICAL.md §6): with
+        # probability high_risk_fraction, draw from
         # the precomputed top-native_pc pool instead of the full table.
         # Independent per-episode coin flip (not tied to the schedule/
         # evolution draws above), so it composes cleanly with stage 3's
@@ -241,8 +242,8 @@ class SecondaryScenarioSampler:
         pool = self.high_risk_df if drawing_high_risk else self.geometry_df
 
         # A handful of real events have relative_speed high enough
-        # (found in Phase 7e/docs/26-precise-targeting.md: 15,850 m/s,
-        # nearly 2x circular LEO speed) that NO relative-velocity
+        # (found in Phase 7e, TECHNICAL.md §6: 15,850 m/s, nearly 2x
+        # circular LEO speed) that NO relative-velocity
         # direction can produce a bound orbit within our LEO-realistic
         # bounds (periapsis >= min_altitude_m, apoapsis <=
         # max_apoapsis_altitude_m) -- confirmed analytically for that
@@ -268,8 +269,8 @@ class SecondaryScenarioSampler:
             augmented = False
 
             if drawing_high_risk and self.high_risk_augment:
-                # Posterior-resampling augmentation (docs/25-augmentation-
-                # and-threshold-findings.md): this row's covariance IS its
+                # Posterior-resampling augmentation (TECHNICAL.md §6):
+                # this row's covariance IS its
                 # own statement of "here is the distribution of plausible
                 # true miss-vector offsets consistent with this real
                 # measurement" -- (sigma_x, sigma_z) describes uncertainty
@@ -328,8 +329,9 @@ class SecondaryScenarioSampler:
             "precise_targeting_error_m": None,
         }
         # The real event's own miss-vector-vs-covariance alignment, not a
-        # fresh uniform-random draw -- see docs/23-anisotropic-covariance-
-        # fix.md. `solve_secondary_initial_state`'s `orientation_angle_rad`
+        # fresh uniform-random draw -- see TECHNICAL.md §6, "The scenario
+        # generator couldn't produce a genuinely dangerous episode".
+        # `solve_secondary_initial_state`'s `orientation_angle_rad`
         # places the miss vector within `encounter_plane_basis(v_rel)`,
         # the SAME basis convention `project_to_encounter_plane` used to
         # compute this angle in the first place (both live in
@@ -345,8 +347,9 @@ class SecondaryScenarioSampler:
         scenario = pre_solve_scenario
 
         if drawing_high_risk and self.high_risk_precise_targeting:
-            # docs/26-precise-targeting.md: the J2-only solver above is
-            # only accurate to ~100-200m at these lead times, regardless
+            # TECHNICAL.md §6, "Five bugs standing between...": the
+            # J2-only solver above is only accurate to ~100-200m at
+            # these lead times, regardless
             # of target size -- invisible for the km-scale miss distances
             # every other draw uses, but it swamps the tens-of-meters
             # targets real high-risk events need. Corrects r_sec_t0/v_sec
@@ -405,11 +408,11 @@ class SecondaryScenarioSampler:
         used throughout.
 
         Replaces the pre-Phase-7b isotropic `current_sigma` (geometric
-        mean) -- see docs/23-anisotropic-covariance-fix.md: collapsing to
-        one isotropic value discarded the real covariance ellipse's
-        eccentricity (median ~5.8x, per docs/22-evaluation-results.md),
-        which materially suppressed computed Pc relative to the real
-        anisotropic geometry.
+        mean) -- see TECHNICAL.md §6, "The scenario generator couldn't
+        produce a genuinely dangerous episode": collapsing to one
+        isotropic value discarded the real covariance ellipse's
+        eccentricity (median ~5.8x), which materially suppressed
+        computed Pc relative to the real anisotropic geometry.
         """
         self._ensure_current()
         return float(self._cached_sample["sigma_x"]), float(self._cached_sample["sigma_z"])
@@ -419,7 +422,7 @@ class SecondaryScenarioSampler:
         episode start (0.0) to TCA (1.0), via geometric (log-linear)
         interpolation between the sampled event's real first/last
         per-axis sigma -- covariance shrinks multiplicatively (median
-        ~8.36x per docs/15), not additively, so linear interpolation
+        ~8.36x, per TECHNICAL.md §2), not additively, so linear interpolation
         would be the wrong shape. Each axis is interpolated independently
         (not collapsed to a magnitude first) so the eccentricity is
         preserved throughout the episode, not just at its endpoints.

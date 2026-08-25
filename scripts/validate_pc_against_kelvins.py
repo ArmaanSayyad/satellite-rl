@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Phase 1 validation: compare our Pc implementation against the ESA Kelvins
-dataset's real, historical `risk` values (see docs/13-roadmap.md Phase 1,
-docs/04-collision-probability.md).
+dataset's real, historical `risk` values (see TECHNICAL.md §6, "Collision-
+probability math, validated against real ESA assessments").
 
 Empirically established (see this script's exploratory run, Aug 2026):
 - `risk` in the dataset is log10(Pc), floored at -30.
@@ -12,7 +12,7 @@ Empirically established (see this script's exploratory run, Aug 2026):
   {t,c}_ct_r, {t,c}_cn_r, {t,c}_cn_t are the off-diagonal covariance terms,
   matching the standard CCSDS CDM covariance-matrix layout.
 - The dataset does NOT provide a hard-body-radius column directly (this
-  gap was correctly flagged in docs/05-datasets.md). We derive a combined
+  gap is noted in TECHNICAL.md §2, Data). We derive a combined
   radius from {t,c}_rcs_estimate (radar cross-section, m^2) via
   r = sqrt(RCS / pi) -- a real physical proxy, not an invented constant,
   but still an approximation (RCS != physical cross-sectional area in

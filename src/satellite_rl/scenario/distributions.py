@@ -1,8 +1,8 @@
 """Fit and sample distributions from real Kelvins CDM statistics, to ground
 synthetic scenario generation in reality rather than invented numbers.
-See docs/03-scenario-design.md.
+See TECHNICAL.md §2 (Data).
 
-Three things get fit here, matching docs/03-scenario-design.md's design:
+Three things get fit here:
 1. Encounter geometry (miss distance, relative speed, encounter-plane
    sigma_x/sigma_z, combined radius) -- the per-scenario parameters for
    curriculum stage 2 ("single conjunction, sampled geometry").
@@ -12,9 +12,9 @@ Three things get fit here, matching docs/03-scenario-design.md's design:
 3. A schedule library (real per-event time_to_tca sequences) -- sampled by
    bootstrap resampling of actual event schedules rather than a fitted
    parametric distribution, since real schedules are irregular (counts
-   ranging 1-23 CDMs/event; see docs/14 for the empirical check). This
-   matches docs/09-episode-design.md's "decision points sampled from the
-   real distribution of time_to_tca values ... within a Kelvins event."
+   ranging 1-23 CDMs/event). This matches TECHNICAL.md §4's "decision
+   points sampled from the real distribution of time_to_tca values ...
+   within a Kelvins event."
 """
 
 import json
@@ -85,9 +85,10 @@ def _add_encounter_geometry(df):
     Also records `alignment_angle_rad = atan2(z0, x0)` -- the real miss
     vector's angle within the event's own principal-axis (tight-x/loose-z)
     frame, per `pc/geometry.py`'s `EncounterGeometry2D`. This was dropped
-    entirely before Phase 7b (see docs/22-evaluation-results.md and
-    docs/23-anisotropic-covariance-fix.md): downstream sampling used only
-    the scalar miss_distance and an independently-fixed isotropic sigma,
+    entirely before Phase 7b (see TECHNICAL.md §6, "The scenario
+    generator couldn't produce a genuinely dangerous episode"): downstream
+    sampling used only the scalar miss_distance and an independently-fixed
+    isotropic sigma,
     re-randomizing where the miss vector fell relative to the (also
     collapsed-to-isotropic) covariance ellipse every episode -- discarding
     exactly the information that determines whether a given real
@@ -98,19 +99,19 @@ def _add_encounter_geometry(df):
     Also records `native_pc` -- Pc computed directly from this row's own
     (x0, z0, sigma_x, sigma_z, combined_radius), i.e. what this specific
     real event's risk actually is, standalone. Added in Phase 7c (see
-    docs/24-risk-stratified-sampling.md) so downstream sampling can
-    stratify by real risk level without recomputing Pc from scratch every
-    time a row is drawn.
+    TECHNICAL.md §6, "Chasing one real actionable event to seven") so
+    downstream sampling can stratify by real risk level without
+    recomputing Pc from scratch every time a row is drawn.
 
     Also records `esa_reported_pc = 10**risk` -- ESA's own reported Pc for
-    this event (`risk` is `log10(Pc)`, floored at -30, per docs/14-pc-
-    validation-results.md), straight from the raw CDM row, no
-    recomputation. Added in Phase 7d (docs/25-augmentation-and-threshold-
-    findings.md) after finding `native_pc` materially under-counts risk
-    relative to ESA's own assessment for several real events (our RCS-
-    based combined-radius approximation is a known, documented source of
-    disagreement -- docs/14 already found ~3.5-3.9 decades of std
-    deviation between the two, this is that same known gap surfacing
+    this event (`risk` is `log10(Pc)`, floored at -30), straight from the
+    raw CDM row, no recomputation. Added in Phase 7d (TECHNICAL.md §6)
+    after finding `native_pc` materially under-counts risk relative to
+    ESA's own assessment for several real events (our RCS-based
+    combined-radius approximation is a known, documented source of
+    disagreement -- TECHNICAL.md §6's Pc-validation finding already
+    found ~3.5-3.9 decades of std deviation between the two, this is
+    that same known gap surfacing
     concretely) -- e.g. ESA's single riskiest real event (Pc=0.0207) comes
     out at `native_pc=6.7e-5` in our own recomputation, ~300x lower and
     below our own `pc_threshold=1e-4`. Kept alongside `native_pc` rather
@@ -163,7 +164,7 @@ def fit_geometry_distributions(
     combined radius), and return the underlying per-event table alongside
     the fits -- the table is what `sample_scenario_geometry_bootstrap`
     uses, since the marginal fits alone are a statistically poor
-    approximation (see docs/15-distribution-fitting-results.md).
+    approximation (see TECHNICAL.md §2, Data).
     """
     final_cdms = load_events(csv_path, which="final")
     required = ["t_rcs_estimate", "c_rcs_estimate"]
@@ -191,19 +192,18 @@ def fit_covariance_shrink_ratio(
     """Fit the ratio of (first-CDM combined-sigma magnitude) to
     (last-CDM combined-sigma magnitude) per event -- how much the
     covariance typically shrinks between an event's first and final
-    reported CDM. Used by docs/03-scenario-design.md's evolving-
-    uncertainty model (curriculum stage 3).
+    reported CDM. Used by the evolving-uncertainty model (curriculum
+    stage 3, TECHNICAL.md §4).
 
     "Combined-sigma magnitude" here is geometric mean(sigma_x, sigma_z) in
     the encounter-plane projection, i.e. a single scalar uncertainty-size
     summary -- consistent with what fit_geometry_distributions fits.
 
     Also returns the underlying per-event (first, last) sigma_x/sigma_z
-    table -- per docs/15-distribution-fitting-results.md and
-    docs/19-curriculum-stage-2.md's established pattern, the marginal
-    lognormal fit on the ratio alone is KS-rejected (see docs/15), so
-    curriculum stage 3 should bootstrap real per-event pairs from this
-    table rather than sample from the fit.
+    table -- per TECHNICAL.md §2's established pattern, the marginal
+    lognormal fit on the ratio alone is KS-rejected, so curriculum
+    stage 3 should bootstrap real per-event pairs from this table rather
+    than sample from the fit.
     """
     first_cdms = load_events(csv_path, which="first").dropna(
         subset=["t_rcs_estimate", "c_rcs_estimate"]
@@ -236,8 +236,8 @@ def fit_covariance_shrink_ratio(
 
 def extract_schedule_library(csv_path: Path = DEFAULT_TRAIN_CSV, max_events: int = 5000) -> list:
     """Real per-event time_to_tca sequences (days before TCA, descending),
-    for bootstrap resampling by the episode generator (docs/09-episode-
-    design.md), rather than a fitted parametric schedule model -- real
+    for bootstrap resampling by the episode generator (TECHNICAL.md §4),
+    rather than a fitted parametric schedule model -- real
     schedules are too irregular (1-23 CDMs/event) for a clean parametric
     fit to be worth the complexity.
     """
@@ -256,7 +256,7 @@ def sample_scenario_geometry(fitted: dict[str, FittedLognormal], rng: np.random.
     """Draw one synthetic scenario's geometry parameters from INDEPENDENT
     per-parameter lognormal fits.
 
-    NOTE (see docs/15-distribution-fitting-results.md): the KS goodness-of-
+    NOTE (see TECHNICAL.md §2, Data): the KS goodness-of-
     fit tests for these marginal fits are statistically poor (p ~ 0 for
     every parameter, KS statistics 0.10-0.25), and independent marginals
     also discard real cross-parameter correlations (e.g. miss distance and
@@ -280,7 +280,7 @@ def sample_scenario_geometry_bootstrap(geometry_df: pd.DataFrame, rng: np.random
     event's geometry tuple (with replacement), preserving real
     cross-parameter correlations that independent marginal fits discard.
     This is the recommended sampling method -- see the note on
-    `sample_scenario_geometry` and docs/15-distribution-fitting-results.md.
+    `sample_scenario_geometry` and TECHNICAL.md §2 (Data).
     """
     row = geometry_df.iloc[rng.integers(0, len(geometry_df))]
     return {
@@ -301,7 +301,7 @@ def sample_covariance_evolution_bootstrap(
     """Draw one real event's (first-CDM, last-CDM) sigma_x/sigma_z pair,
     for curriculum stage 3's evolving-uncertainty model -- same bootstrap-
     over-fitted-distribution rationale as
-    `sample_scenario_geometry_bootstrap` (docs/15).
+    `sample_scenario_geometry_bootstrap` (TECHNICAL.md §2).
     """
     row = evolution_df.iloc[rng.integers(0, len(evolution_df))]
     return {

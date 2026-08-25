@@ -1,7 +1,7 @@
 """Collision probability (Pc) computation for satellite conjunction assessment.
 
-See docs/04-collision-probability.md for the method selection and
-validation approach.
+See TECHNICAL.md §3 (System architecture) for the method selection and
+§6 (Development history) for the validation against real ESA data.
 """
 
 import numpy as np
@@ -38,8 +38,8 @@ def compute_pc(
         combined_radius: combined hard-body radius (sum of both objects'
             radii), meters.
         method: "foster" (accuracy reference, default) or "chan" (fast
-            series approximation -- see docs/10-rl-algorithm.md for when
-            to prefer it, e.g. inside a training loop).
+            series approximation -- see TECHNICAL.md §5, Training setup,
+            for when to prefer it, e.g. inside a training loop).
 
     Returns:
         Probability of collision, in [0, 1].

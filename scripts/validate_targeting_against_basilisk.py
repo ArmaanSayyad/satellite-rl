@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Phase 3 validation (STATUS: INCOMPLETE / NOT TRUSTWORTHY YET -- see
-docs/16-targeting-validation-results.md): how much does Basilisk's actual
+"""Phase 3 validation (STATUS: this script's own output is still NOT
+TRUSTWORTHY -- see below -- but the question it was trying to answer WAS
+later resolved by a different path; see TECHNICAL.md §6, "J2 nodal
+precession: a 433x accuracy fix"): how much does Basilisk's actual
 high-fidelity dynamics (10th-degree spherical harmonics Earth gravity,
-matching bsk_rl's own DynamicsModel -- see docs/02-bsk_rl-architecture.md)
-diverge from the simpler two-body model our targeting solver uses to
-compute initial conditions? This is the open risk flagged in
-docs/03-scenario-design.md's "Open technical risk to flag honestly"
-section.
+matching bsk_rl's own DynamicsModel) diverge from the simpler two-body
+model our targeting solver uses to compute initial conditions?
 
 This script is kept as-is, NOT as a validated result, because three real
 bugs were found and fixed while building it (numpy-array initial
@@ -16,12 +15,14 @@ inline below) but the final single-spacecraft result still didn't
 converge to a physically plausible number even after all three fixes, and
 further debugging showed sensitivity to details (e.g. `zeroBase` string
 capitalization) that weren't fully run to ground. Rather than keep
-hand-rolling raw Basilisk scripting, Phase 4 will do this validation
-properly using bsk_rl's own Satellite/DynamicsModel class, which already
-wires this up correctly in a maintained, working RL framework -- see
-docs/16 for the full reasoning. Do not treat this script's output as a
-real result; it's kept for reference (the real, fixed bugs below remain
-useful) for whoever picks this back up in Phase 4.
+hand-rolling raw Basilisk scripting, the real answer was found instead by
+building the actual environment on bsk_rl's own Satellite/DynamicsModel
+class (already correct in a maintained, working RL framework): the
+divergence was real J2 nodal precession, not a raw-Basilisk setup bug --
+see TECHNICAL.md §6 for the full story, including the fix. Do not treat
+this script's own output as a real result; it's kept for reference (the
+real, fixed bugs below remain useful) for anyone hand-rolling similar
+raw Basilisk scripting in the future.
 """
 
 import sys
@@ -81,12 +82,12 @@ def fly_two_body_basilisk(
     # frame, so a planet-orientation message must be connected via a SPICE
     # interface, or Earth is silently treated as non-rotating -- producing
     # a large, spurious secular drift (empirically ~3000 km over 3 days in
-    # this scenario before this fix; see docs/16-targeting-validation-
-    # results.md). Verified against bsk_rl's own world.py AND Basilisk's
+    # this scenario before this fix; see TECHNICAL.md §6, "J2 nodal
+    # precession"). Verified against bsk_rl's own world.py AND Basilisk's
     # own examples/scenarioOrbitConsistencyVerification.py (a real,
     # maintained Basilisk test written specifically to check this exact
-    # thing -- see docs/16), which is also where `zeroBase = "Earth"`
-    # (capitalized) and the explicit GravBodyVector line below come from.
+    # thing), which is also where `zeroBase = "Earth"` (capitalized) and
+    # the explicit GravBodyVector line below come from.
     grav_factory.createSpiceInterface(time="2018 SEP 29 21:00:00.000 (UTC)")
     grav_factory.spiceObject.zeroBase = "Earth"
     scSim.AddModelToTask(sim_task_name, grav_factory.spiceObject, ModelPriority=100)
@@ -95,7 +96,8 @@ def fly_two_body_basilisk(
     # rather than gravFactory.addBodiesTo(...) -- tried both individually
     # and together; none produced a result matching the two-body reference
     # at short (600s) timescales. Left as the closest-to-reference-example
-    # version for whoever debugs this further in Phase 4.
+    # version; the real divergence question this script couldn't resolve
+    # was later answered by a different path -- see TECHNICAL.md §6.
     ego.gravField.gravBodies = spacecraft.GravBodyVector(list(grav_factory.gravBodies.values()))
     sec.gravField.gravBodies = spacecraft.GravBodyVector(list(grav_factory.gravBodies.values()))
 
@@ -103,8 +105,8 @@ def fly_two_body_basilisk(
     # ndarray directly to hub.r_CN_NInit/v_CN_NInit silently mis-parses
     # through Basilisk's SWIG/Eigen binding (produces a wrong initial
     # state with no error/warning) -- empirically confirmed (Phase 3, see
-    # docs/16-targeting-validation-results.md): 473m error over 3 days
-    # with numpy arrays vs. 0.02m with plain lists, all else identical.
+    # TECHNICAL.md §6): 473m error over 3 days with numpy arrays vs.
+    # 0.02m with plain lists, all else identical.
     ego.hub.r_CN_NInit = list(r_ego0)
     ego.hub.v_CN_NInit = list(v_ego0)
     sec.hub.r_CN_NInit = list(r_sec0)

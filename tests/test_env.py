@@ -1,17 +1,17 @@
 """Tests for the Phase 4 CollisionAvoidanceEnv.
 
-Requires the full bsk_rl/Basilisk stack (not installed in the lightweight
-CI environment, see docs/12-architecture.md and docs/17-env-
-implementation-notes.md) -- skipped automatically if unavailable via
-`pytest.importorskip`, rather than failing CI or silently not running
-these when a contributor does have the stack installed locally.
+Requires the full bsk_rl/Basilisk stack (not installed in the
+lightweight CI environment, see TECHNICAL.md §3, System architecture)
+-- skipped automatically if unavailable via `pytest.importorskip`,
+rather than failing CI or silently not running these when a
+contributor does have the stack installed locally.
 
-Uses a low-relative-speed scenario throughout: docs/17's TCA-timing-
-sensitivity finding means high-relative-speed scenarios need a proper
-TCA-refinement step (not yet implemented, Phase 5 follow-up) to produce
-realized encounters close to the targeted geometry -- these tests
-validate pipeline correctness, not that specific arbitrary parameters
-produce a specific miss distance.
+Uses a low-relative-speed scenario throughout: the realized-vs-targeted
+miss distance gap (a scenario-dependent J2-vs-Basilisk positional
+residual, not primarily a timing effect -- see TECHNICAL.md §6) is
+small at low relative speed, so these tests validate pipeline
+correctness without needing the precise-targeting correction high-risk
+scenarios use.
 """
 
 import numpy as np
@@ -21,9 +21,8 @@ pytest.importorskip("bsk_rl")
 
 from satellite_rl.env import CollisionAvoidanceEnv
 
-# Parameters chosen in the regime where docs/17's timing-sensitivity
-# finding is small relative to the miss distance (see that doc for why
-# low relative speed matters here).
+# Parameters chosen in the regime where the realized-vs-targeted miss
+# distance gap (TECHNICAL.md §6) is small relative to the miss distance.
 ENV_KWARGS = {
     "sim_rate": 5.0,
     "miss_distance_m": 300.0,
@@ -94,7 +93,7 @@ def test_invalid_schedule_rejected():
         CollisionAvoidanceEnv(schedule_days_before_tca=(2.0, 1.0, 0.5))  # doesn't end at 0.0
 
 
-# Curriculum stage 2 (docs/19-curriculum-stage-2.md): sampled geometry.
+# Curriculum stage 2 (TECHNICAL.md §4): sampled geometry.
 SAMPLING_ENV_KWARGS = {
     "sample_geometry": True,
     "sim_rate": 5.0,
@@ -153,8 +152,7 @@ def test_sampling_env_pc_sigma_and_radius_vary_with_sample():
 
 def test_reset_with_explicit_seed_is_reproducible():
     """gymnasium's standard contract: reset(seed=X) called twice must
-    reproduce the same sampled scenario -- exercises the Phase 5d fix
-    (see docs/19-curriculum-stage-2.md's seeding section).
+    reproduce the same sampled scenario -- exercises the Phase 5d fix.
     """
     env = CollisionAvoidanceEnv(**SAMPLING_ENV_KWARGS)
     env.reset(seed=123)
@@ -164,7 +162,7 @@ def test_reset_with_explicit_seed_is_reproducible():
     assert first == second
 
 
-# Curriculum stage 3 (docs/20-curriculum-stage-3.md): evolving uncertainty
+# Curriculum stage 3 (TECHNICAL.md §4): evolving uncertainty
 # + real per-event schedules. sim_rate kept small since real schedules can
 # span multiple days.
 EVOLVING_ENV_KWARGS = {
@@ -190,7 +188,7 @@ def test_evolving_env_requires_sample_geometry():
 def test_evolving_env_schedule_is_well_formed_across_resets():
     """Real per-event schedules are irregular and variable-length -- must
     still always be strictly descending, end at exactly 0.0, and be
-    entirely non-negative (docs/20 -- real Kelvins data has some negative
+    entirely non-negative (real Kelvins data has some negative
     time_to_tca entries that must be filtered, not just clipped).
     """
     env = CollisionAvoidanceEnv(**EVOLVING_ENV_KWARGS)
@@ -207,7 +205,8 @@ def test_evolving_env_sigma_shrinks_toward_tca():
     """The whole point of stage 3: sigma should generally decrease across
     the episode (real covariance shrinks as tracking improves), not stay
     constant like stage 2. Not asserted as a strict per-step invariant
-    (docs/03 notes real per-event ratios aren't always monotonic) -- just
+    (real per-event ratios aren't always monotonic, per TECHNICAL.md
+    §3) -- just
     that the final sigma is meaningfully smaller than the initial one,
     over enough episodes that this holds on average.
     """
