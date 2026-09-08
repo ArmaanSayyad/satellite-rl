@@ -1,0 +1,263 @@
+{
+  "kind": "local-j2-response-vs-basilisk",
+  "config": {
+    "event_id": 8767,
+    "seed": 100,
+    "magnitude": 0.01,
+    "max_lead_days": 0.2,
+    "out": "runs/teacher-response-validation.json"
+  },
+  "elapsed_seconds": 114.506976417033,
+  "initial_estimate": {
+    "version": "encounter-history-v2.1-basilisk",
+    "forecast_fidelity": "basilisk",
+    "kind": "generated_measurement",
+    "miss_plane_m": [
+      -17.58726133266019,
+      -33.45908229843446
+    ],
+    "covariance_plane_m2": [
+      [
+        1374.6961368510565,
+        0.0
+      ],
+      [
+        0.0,
+        4928.711124863472
+      ]
+    ],
+    "basis_eci": [
+      [
+        -0.9275437842948816,
+        -0.21909728502829803
+      ],
+      [
+        -0.37371450094414377,
+        0.5437903115090948
+      ],
+      [
+        0.0,
+        -0.8101163353507139
+      ]
+    ],
+    "basis_rtn": [
+      [
+        -0.9275437842948816,
+        -0.21909728502829803
+      ],
+      [
+        -0.2321319327192714,
+        -0.2971087267564154
+      ],
+      [
+        0.2928776092977169,
+        -0.9293668727571532
+      ]
+    ],
+    "estimated_pc": 0.00015276810698608423,
+    "ego_r_eci_m": [
+      6878136.6,
+      0.0,
+      0.0
+    ],
+    "ego_v_eci_ms": [
+      0.0,
+      4728.554806421752,
+      5965.951392016557
+    ],
+    "time_to_tca_s": 17280.0,
+    "next_update_s": 17280.0,
+    "radius_m": 0.9985582453787902,
+    "fuel_remaining_ms": 100.0,
+    "fuel_fraction": 1.0,
+    "noise_scale": 0,
+    "noise_model": "iid_encounter_plane_gaussian",
+    "relative_velocity_assumption": "known_direction"
+  },
+  "response_m_per_ms": [
+    [
+      260.0018731026645,
+      2902.84547640072,
+      -78.3103180960401
+    ],
+    [
+      65.6168619002996,
+      -10874.086937466638,
+      235.93140217460012
+    ]
+  ],
+  "final_covariance_plane_m2": [
+    [
+      1340.2107489321613,
+      0.0
+    ],
+    [
+      0.0,
+      4318.391760910031
+    ]
+  ],
+  "rows": [
+    {
+      "action": "none",
+      "action_rtn_ms": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "predicted_miss_fixed_plane_m": [
+        -17.58726133266019,
+        -33.45908229843446
+      ],
+      "actual_miss_fixed_plane_m": [
+        -17.58726155764591,
+        -33.459082198338386
+      ],
+      "miss_vector_error_m": 2.462474318430334e-07,
+      "predicted_miss_norm_m": 37.79976123518103,
+      "actual_miss_norm_m": 37.79976125125943,
+      "predicted_pc_current_covariance": 0.00015276810698605647,
+      "predicted_pc_final_covariance": 0.00016219047756702715,
+      "actual_pc_final": 0.00016219047721400398,
+      "actual_fuel_ms": 0.0
+    },
+    {
+      "action": "R-",
+      "action_rtn_ms": [
+        -0.01,
+        -0.0,
+        -0.0
+      ],
+      "predicted_miss_fixed_plane_m": [
+        -20.187280063686835,
+        -34.11525091743746
+      ],
+      "actual_miss_fixed_plane_m": [
+        -20.187564339159803,
+        -34.115311506881525
+      ],
+      "miss_vector_error_m": 0.0002906606703073388,
+      "predicted_miss_norm_m": 39.640593102644736,
+      "actual_miss_norm_m": 39.64079001684098,
+      "predicted_pc_current_covariance": 0.00014674620086868942,
+      "predicted_pc_final_covariance": 0.0001555551672972194,
+      "actual_pc_final": 0.00015555445803015766,
+      "actual_fuel_ms": 0.009999999776482582
+    },
+    {
+      "action": "R+",
+      "action_rtn_ms": [
+        0.01,
+        0.0,
+        0.0
+      ],
+      "predicted_miss_fixed_plane_m": [
+        -14.987242601633547,
+        -32.80291367943146
+      ],
+      "actual_miss_fixed_plane_m": [
+        -14.986921559116672,
+        -32.802996564657576
+      ],
+      "miss_vector_error_m": 0.00033156938693024624,
+      "predicted_miss_norm_m": 36.064505911774965,
+      "actual_miss_norm_m": 36.064447887636554,
+      "predicted_pc_current_covariance": 0.00015824323214635658,
+      "predicted_pc_final_covariance": 0.000168241289492832,
+      "actual_pc_final": 0.00016824176567839175,
+      "actual_fuel_ms": 0.009999999776482582
+    },
+    {
+      "action": "T-",
+      "action_rtn_ms": [
+        -0.0,
+        -0.01,
+        -0.0
+      ],
+      "predicted_miss_fixed_plane_m": [
+        -46.61571609666739,
+        75.28178707623192
+      ],
+      "actual_miss_fixed_plane_m": [
+        -46.6198416094676,
+        75.29310609468219
+      ],
+      "miss_vector_error_m": 0.012047407793468756,
+      "predicted_miss_norm_m": 88.54587767138692,
+      "actual_miss_norm_m": 88.55767305590699,
+      "predicted_pc_current_covariance": 4.8901340220758316e-05,
+      "predicted_pc_final_covariance": 4.780001343976381e-05,
+      "actual_pc_final": 4.7806320902593624e-05,
+      "actual_fuel_ms": 0.009999999776482582
+    },
+    {
+      "action": "T+",
+      "action_rtn_ms": [
+        0.0,
+        0.01,
+        0.0
+      ],
+      "predicted_miss_fixed_plane_m": [
+        11.44119343134701,
+        -142.19995167310086
+      ],
+      "actual_miss_fixed_plane_m": [
+        11.409245207085458,
+        -142.22425935037265
+      ],
+      "miss_vector_error_m": 0.04014414288306591,
+      "predicted_miss_norm_m": 142.65947975148976,
+      "actual_miss_norm_m": 142.68115090633893,
+      "predicted_pc_current_covariance": 2.3481943010619788e-05,
+      "predicted_pc_final_covariance": 1.899034364055696e-05,
+      "actual_pc_final": 1.898152734980396e-05,
+      "actual_fuel_ms": 0.009999999776482582
+    },
+    {
+      "action": "N-",
+      "action_rtn_ms": [
+        -0.0,
+        -0.0,
+        -0.01
+      ],
+      "predicted_miss_fixed_plane_m": [
+        -16.804158151699788,
+        -35.81839632018046
+      ],
+      "actual_miss_fixed_plane_m": [
+        -16.80440637451687,
+        -35.81738761289376
+      ],
+      "miss_vector_error_m": 0.0010387997675987476,
+      "predicted_miss_norm_m": 39.56434311519472,
+      "actual_miss_norm_m": 39.56353534521629,
+      "predicted_pc_current_covariance": 0.00015173510468191945,
+      "predicted_pc_final_covariance": 0.0001607572521521404,
+      "actual_pc_final": 0.0001607580920742202,
+      "actual_fuel_ms": 0.009999999776482582
+    },
+    {
+      "action": "N+",
+      "action_rtn_ms": [
+        0.0,
+        0.0,
+        0.01
+      ],
+      "predicted_miss_fixed_plane_m": [
+        -18.370364513620594,
+        -31.099768276688458
+      ],
+      "actual_miss_fixed_plane_m": [
+        -18.370079209695596,
+        -31.10092168745461
+      ],
+      "miss_vector_error_m": 0.001188172851520492,
+      "predicted_miss_norm_m": 36.12015890367883,
+      "actual_miss_norm_m": 36.121006907057215,
+      "predicted_pc_current_covariance": 0.00015356603513747014,
+      "predicted_pc_final_covariance": 0.0001633509576998357,
+      "actual_pc_final": 0.00016335024515978444,
+      "actual_fuel_ms": 0.009999999776482582
+    }
+  ],
+  "scope": "One source, one generated orbit, six small first-step impulses. Not a global surrogate validation. Predictions freeze encounter basis; final covariance is used only for diagnostic isolation, not supplied to the online teacher."
+}

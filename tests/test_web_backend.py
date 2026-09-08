@@ -1,120 +1,113 @@
-"""Smoke test for the web demo's FastAPI backend (web/backend/).
-
-Needs bsk_rl (like tests/test_env.py) AND a trained model checkpoint
-(runs/ppo_stage2_riskaware_run1.zip, gitignored -- see web/README.md
-for how to produce one), so this skips automatically wherever either
-is unavailable -- including CI, which has neither. Where it does run,
-it exercises the real endpoint end-to-end: real policy, real Basilisk
-physics, no mocking.
-"""
-
-import sys
+"""Service contract tests run without physics or a checkpoint."""
+import json
 from pathlib import Path
 
 import pytest
 
-pytest.importorskip("bsk_rl")
 pytest.importorskip("fastapi")
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
-BACKEND_DIR = REPO_ROOT / "web" / "backend"
-MODEL_PATH = REPO_ROOT / "runs" / "ppo_stage2_riskaware_run1.zip"
-
-if not MODEL_PATH.exists():
-    pytest.skip(
-        f"no trained model at {MODEL_PATH} -- see web/README.md",
-        allow_module_level=True,
-    )
-
-sys.path.insert(0, str(BACKEND_DIR))
-from main import app
+from fastapi.testclient import TestClient
+from web.backend.catalog import scenarios
+from web.backend.contracts import SimulationRequest
+from web.backend.jobs import JobManager, atomic_json
+from web.backend.main import create_app
 
 
-@pytest.fixture(scope="module")
-def client():
-    from fastapi.testclient import TestClient
-
-    with TestClient(app) as c:
-        yield c
-
-
-def test_health(client):
-    resp = client.get("/api/health")
-    assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    monkeypatch.setenv("APSIS_LIVE", "0")
+    with TestClient(create_app(JobManager(tmp_path))) as client:
+        yield client
 
 
-# The 7 known real ESA-anchored events -- see
-# simulation_runner.HIGH_RISK_POOL_FRACTION.
-KNOWN_MISS_DISTANCES = {38.0, 119.0, 237.0, 352.0, 473.0, 642.0, 1102.0}
+def test_replay_service_available_without_live_physics(client):
+    health = client.get("/api/v2/health")
+    assert health.json()["live_available"] is False
+    catalog = client.get("/api/v2/scenarios").json()["scenarios"]
+    assert len({row["id"] for row in catalog}) == len(catalog)
+    event = next(row for row in catalog if row["id"] == "kelvins-8767")
+    assert event["miss_distance_m"] == 38
+    assert event["native_pc"] != event["esa_reported_pc"]
+    assert client.get("/api/v2/replays").status_code == 200
+    assert client.get("/api/v2/policies").status_code == 200
 
 
-def test_list_scenarios(client):
-    resp = client.get("/api/scenarios")
-    assert resp.status_code == 200
-    scenarios = resp.json()
-
-    assert len(scenarios) == len(KNOWN_MISS_DISTANCES)
-    assert {s["miss_distance_m"] for s in scenarios} == KNOWN_MISS_DISTANCES
-    for s in scenarios:
-        assert isinstance(s["seed"], int)
-        assert s["relative_speed_ms"] > 0
-        assert s["native_pc"] >= 0.0
+def test_disabled_live_has_actionable_error(client):
+    response = client.post("/api/v2/jobs", json={"scenario_id": "kelvins-8767"})
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "live_unavailable"
 
 
-def test_simulate_rejects_unknown_seed(client):
-    resp = client.post("/api/simulate", params={"seed": -999})
-    assert resp.status_code == 400
+@pytest.mark.parametrize("body", [
+    {"scenario_id": "../../etc/passwd"},
+    {"scenario_id": "kelvins-8767", "radius_scale": 200},
+    {"scenario_id": "kelvins-8767", "seed": -1},
+    {"scenario_id": "kelvins-8767", "policy_id": "arbitrary-code"},
+    {"scenario_id": "kelvins-8767", "unexpected": True},
+])
+def test_request_bounds(client, body):
+    assert client.post("/api/v2/jobs", json=body).status_code == 422
 
 
-def test_simulate_returns_real_episode_for_chosen_seed(client):
-    scenarios = client.get("/api/scenarios").json()
-    target = next(s for s in scenarios if s["miss_distance_m"] == 38.0)
-
-    resp = client.post("/api/simulate", params={"seed": target["seed"]})
-    assert resp.status_code == 200
-    body = resp.json()
-
-    assert set(body.keys()) == {
-        "seed",
-        "scenario",
-        "constants",
-        "keyframes",
-        "decisions",
-        "dense_frames",
-        "result",
-        "baseline",
-    }
-
-    assert body["seed"] == target["seed"]
-    assert body["scenario"]["miss_distance_m"] == 38.0
-
-    assert len(body["keyframes"]) >= 2
-    assert len(body["dense_frames"]) >= len(body["keyframes"])
-    assert len(body["decisions"]) == len(body["keyframes"]) - 1
-
-    for frame in (body["keyframes"][0], body["dense_frames"][0]):
-        for key in ("ego_r", "ego_v", "sec_r", "sec_v"):
-            assert len(frame[key]) == 3
-
-    result = body["result"]
-    assert result["total_fuel_used_ms"] >= 0.0
-    assert result["maneuver_count"] >= 0
-    assert isinstance(result["collision_occurred"], bool)
-
-    baseline = body["baseline"]
-    assert baseline["policy"] == "never_maneuver"
-    assert isinstance(baseline["collision_occurred"], bool)
-    # The 38m event is a genuinely dangerous one (native_pc > 1e-4, per
-    # TECHNICAL.md §7) -- with literally no maneuver, the live
-    # re-simulation should reproduce close to that same real risk, not
-    # something wildly different (a loose bound, not exact, since
-    # native_pc and pc_final come from different estimators -- see
-    # TECHNICAL.md §6).
-    assert baseline["pc_final"] > 1e-5
+def test_job_not_found_and_path_safety(client):
+    assert client.get("/api/v2/jobs/not-a-cache-key").status_code == 404
+    assert client.get("/api/v2/jobs/" + "a" * 64).status_code == 404
 
 
-def test_simulate_random_pick_omits_seed_param(client):
-    resp = client.post("/api/simulate")
-    assert resp.status_code == 200
-    assert resp.json()["scenario"]["miss_distance_m"] in KNOWN_MISS_DISTANCES
+def test_interrupted_worker_is_failure_and_never_an_artifact(tmp_path):
+    manager = JobManager(tmp_path)
+    identifier = "a" * 64
+    folder = tmp_path / identifier
+    folder.mkdir()
+    atomic_json(folder / "request.json", {"scenario_id": "kelvins-8767"})
+    assert manager.get(identifier).status == "failed"
+    assert manager.get(identifier).artifact_url is None
+    assert manager.cancel(identifier).status == "cancelled"
+
+
+def test_cached_completed_job_returns_same_artifact(tmp_path):
+    from web.backend.catalog import cache_key
+    request = SimulationRequest(scenario_id="kelvins-8767", policy_id="never_maneuver")
+    identifier = cache_key(request.model_dump())
+    folder = tmp_path / identifier
+    folder.mkdir()
+    atomic_json(folder / "artifact.json", {"result": "already complete"})
+    manager = JobManager(tmp_path)
+    response = manager.submit(request)
+    assert response.cached and response.status == "completed"
+    assert not manager.processes
+
+
+def test_shipped_replays_match_catalog_and_endpoint_verification():
+    from web.backend.catalog import REPLAYS, sha256
+    from web.backend.contracts import ReplayArtifact
+    index = REPLAYS / "index.json"
+    if not index.exists():
+        pytest.skip("Generate recorder-verified examples first")
+    available = {s["event_id"] for s in scenarios()}
+    for entry in json.loads(index.read_text())["replays"]:
+        path = REPLAYS / Path(entry["path"]).name
+        assert sha256(path) == entry["sha256"]
+        artifact = ReplayArtifact.model_validate_json(path.read_text())
+        assert artifact.provenance["source_event_id"] in available
+        assert artifact.provenance["verification"]["max_position_error_m"] < 1e-5
+        assert artifact.decisions[0]["t_s"] == 0
+        times = [frame.t_s for frame in artifact.dense_frames]
+        assert times == sorted(set(times))
+
+
+@pytest.mark.parametrize("info", [
+    {},
+    {"status": "failed", "pc_final_valid": False, "pc_final": 1.0},
+    {"status": "completed", "pc_final_valid": False, "pc_final": 1.0},
+    {"status": "completed", "pc_final_valid": True, "pc_final": float("nan")},
+    {"status": "completed", "pc_final_valid": True, "pc_final": 2.0},
+])
+def test_failed_or_invalid_scores_cannot_be_verified_replays(info):
+    from web.backend.contracts import require_scored_episode
+    with pytest.raises(ValueError):
+        require_scored_episode(info)
+
+
+def test_valid_zero_probability_is_a_publishable_score():
+    from web.backend.contracts import require_scored_episode
+    require_scored_episode({"status": "completed", "pc_final_valid": True, "pc_final": 0.0})

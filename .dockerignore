@@ -1,0 +1,12 @@
+.git
+.venv
+.cache
+runs
+artifacts/local
+web/frontend/node_modules
+web/frontend/dist
+web/frontend/test-results
+web/frontend/playwright-report
+data/kelvins_cdm
+__pycache__
+**/__pycache__

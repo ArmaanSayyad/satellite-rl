@@ -1,5 +1,5 @@
-import { useFrame, useLoader } from "@react-three/fiber";
-import { useEffect, useMemo, useRef } from "react";
+import { useLoader } from "@react-three/fiber";
+import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 
 interface Props {
@@ -67,12 +67,15 @@ const ATMOSPHERE_FRAGMENT_SHADER = `
 `;
 
 export default function Earth({ radiusUnits }: Props) {
-  const [dayMap, nightMap, specularMap, cloudsMap] = useLoader(THREE.TextureLoader, [
-    "/textures/earth_atmos_2048.jpg",
-    "/textures/earth_lights_2048.png",
-    "/textures/earth_specular_2048.jpg",
-    "/textures/earth_clouds_1024.png",
-  ]);
+  const [dayMap, nightMap, specularMap, cloudsMap] = useLoader(
+    THREE.TextureLoader,
+    [
+      "/textures/earth_atmos_2048.jpg",
+      "/textures/earth_lights_2048.png",
+      "/textures/earth_specular_2048.jpg",
+      "/textures/earth_clouds_1024.png",
+    ],
+  );
 
   const dayNightMaterial = useMemo(
     () =>
@@ -86,7 +89,7 @@ export default function Earth({ radiusUnits }: Props) {
         vertexShader: DAY_NIGHT_VERTEX_SHADER,
         fragmentShader: DAY_NIGHT_FRAGMENT_SHADER,
       }),
-    [dayMap, nightMap, specularMap]
+    [dayMap, nightMap, specularMap],
   );
 
   const atmosphereMaterial = useMemo(
@@ -98,7 +101,7 @@ export default function Earth({ radiusUnits }: Props) {
         side: THREE.BackSide,
         transparent: true,
       }),
-    []
+    [],
   );
 
   useEffect(
@@ -106,26 +109,23 @@ export default function Earth({ radiusUnits }: Props) {
       dayNightMaterial.dispose();
       atmosphereMaterial.dispose();
     },
-    [dayNightMaterial, atmosphereMaterial]
+    [dayNightMaterial, atmosphereMaterial],
   );
-
-  const earthRef = useRef<THREE.Mesh>(null);
-  const cloudsRef = useRef<THREE.Mesh>(null);
-
-  useFrame((_state, delta) => {
-    if (earthRef.current) earthRef.current.rotation.y += delta * 0.015;
-    if (cloudsRef.current) cloudsRef.current.rotation.y += delta * 0.022;
-  });
 
   return (
     <group>
-      <mesh ref={earthRef} material={dayNightMaterial}>
+      <mesh material={dayNightMaterial}>
         <sphereGeometry args={[radiusUnits, 64, 64]} />
       </mesh>
 
-      <mesh ref={cloudsRef}>
+      <mesh>
         <sphereGeometry args={[radiusUnits * 1.006, 64, 64]} />
-        <meshStandardMaterial map={cloudsMap} transparent opacity={0.75} depthWrite={false} />
+        <meshStandardMaterial
+          map={cloudsMap}
+          transparent
+          opacity={0.75}
+          depthWrite={false}
+        />
       </mesh>
 
       <mesh scale={1.12} material={atmosphereMaterial}>

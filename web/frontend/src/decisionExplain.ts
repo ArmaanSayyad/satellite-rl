@@ -11,20 +11,28 @@ const FIRE_THRESHOLD_MS = 1e-3;
  * and sometimes burns under threshold or coasts over it, which this
  * reports honestly rather than papering over.
  */
-export function explainDecision(decision: Decision, precedingKeyframe: Keyframe | null, pcThreshold: number): string {
+export function explainDecision(
+  decision: Decision,
+  precedingKeyframe: Keyframe | null,
+  pcThreshold: number,
+): string {
   const pcBefore = precedingKeyframe?.pc_estimate;
   const fired = decision.action_magnitude_ms > FIRE_THRESHOLD_MS;
   const pcText = pcBefore != null ? pcBefore.toExponential(2) : "unknown";
   const overThreshold = pcBefore != null && pcBefore > pcThreshold;
 
+  if (pcBefore == null) {
+    return `Observed Pc was not recorded. ${fired ? `A ${decision.action_magnitude_ms.toFixed(3)} m/s maneuver` : "No measurable maneuver"} was recorded; no risk association or internal rationale is inferred.`;
+  }
+
   if (fired && overThreshold) {
-    return `Estimated Pc (${pcText}) exceeded the ${pcThreshold.toExponential(0)} threshold → burned ${decision.action_magnitude_ms.toFixed(2)} m/s.`;
+    return `Observed Pc ${pcText} was above threshold. The recorded action was ${decision.action_magnitude_ms.toFixed(3)} m/s. This association does not establish the policy's reasoning.`;
   }
   if (fired) {
-    return `Burned ${decision.action_magnitude_ms.toFixed(2)} m/s even though estimated Pc (${pcText}) was under threshold — the learned policy judged it worth the fuel anyway.`;
+    return `Burned ${decision.action_magnitude_ms.toFixed(3)} m/s with observed Pc ${pcText} below threshold. Its internal rationale is unknown.`;
   }
   if (overThreshold) {
-    return `Estimated Pc (${pcText}) was over threshold, but the policy chose not to burn here — it may be waiting for a later, cheaper opportunity.`;
+    return `Observed Pc ${pcText} was above threshold. No measurable maneuver was recorded at this update; no reason is inferred.`;
   }
-  return `Estimated Pc (${pcText}) was under the ${pcThreshold.toExponential(0)} threshold → coasted, no burn.`;
+  return `Observed Pc ${pcText} was below threshold. No measurable maneuver was recorded.`;
 }

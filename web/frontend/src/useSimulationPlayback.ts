@@ -29,7 +29,9 @@ export interface PlaybackState {
   stepToKeyframe: (direction: 1 | -1) => void;
 }
 
-export function useSimulationPlayback(result: SimulationResult | null): PlaybackState {
+export function useSimulationPlayback(
+  result: SimulationResult | null,
+): PlaybackState {
   const [missionTimeS, setMissionTimeS] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speedFactor, setSpeedFactor] = useState(1);
@@ -37,9 +39,11 @@ export function useSimulationPlayback(result: SimulationResult | null): Playback
   const rafRef = useRef<number | null>(null);
   const lastWallMsRef = useRef<number | null>(null);
   const missionTimeRef = useRef(0);
+  const previousScenarioRef = useRef<string | null>(null);
   missionTimeRef.current = missionTimeS;
 
-  const missionDurationS = result?.dense_frames[result.dense_frames.length - 1]?.t_s ?? 0;
+  const missionDurationS =
+    result?.dense_frames[result.dense_frames.length - 1]?.t_s ?? 0;
 
   const stopLoop = useCallback(() => {
     if (rafRef.current !== null) {
@@ -49,12 +53,20 @@ export function useSimulationPlayback(result: SimulationResult | null): Playback
     lastWallMsRef.current = null;
   }, []);
 
-  // New result -> reset to the start and auto-play.
+  // Policy comparisons share mission time. A different scenario resets the clock.
   useEffect(() => {
     stopLoop();
-    setMissionTimeS(0);
+    const scenarioKey = result
+      ? `${result.provenance?.source_event_id ?? result.scenario.miss_distance_m}:${result.seed}:${result.provenance?.kind}:${result.scenario.combined_radius_m}`
+      : null;
+    const sameScenario =
+      scenarioKey != null && scenarioKey === previousScenarioRef.current;
+    setMissionTimeS((current) =>
+      sameScenario ? Math.min(current, missionDurationS) : 0,
+    );
+    previousScenarioRef.current = scenarioKey;
     setSpeedFactor(1);
-    setPlaying(!!result);
+    setPlaying(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result]);
 
@@ -99,7 +111,7 @@ export function useSimulationPlayback(result: SimulationResult | null): Playback
       const clamped = Math.max(0, Math.min(t, missionDurationS));
       setMissionTimeS(clamped);
     },
-    [missionDurationS]
+    [missionDurationS],
   );
   const stepToKeyframe = useCallback(
     (direction: 1 | -1) => {
@@ -115,7 +127,7 @@ export function useSimulationPlayback(result: SimulationResult | null): Playback
         setMissionTimeS(prior.length ? prior[prior.length - 1] : 0);
       }
     },
-    [result, missionDurationS]
+    [result, missionDurationS],
   );
 
   const frame = result ? frameAtTime(result.dense_frames, missionTimeS) : null;
@@ -131,7 +143,9 @@ export function useSimulationPlayback(result: SimulationResult | null): Playback
 
   const maneuversSoFar = useMemo(() => {
     if (!result) return 0;
-    return result.decisions.filter((d) => d.t_s <= missionTimeS).length;
+    return result.decisions.filter(
+      (d) => d.t_s <= missionTimeS && d.action_magnitude_ms > 1e-3,
+    ).length;
   }, [result, missionTimeS]);
 
   return {

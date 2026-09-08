@@ -1,50 +1,68 @@
 name: CI
-
-# No Basilisk/bsk-rl/gymnasium/hapsira install here -- the pc/ and
-# scenario/ modules only need numpy/scipy/pandas (see
-# docs/12-architecture.md), so CI installs just those directly rather
-# than the full pyproject.toml dependency list (which would pull in
-# bsk-rl, needing Basilisk preinstalled). This keeps CI fast until env/
-# tests (Phase 4+) need the full stack, at which point this workflow gets
-# a real Basilisk install step.
-#
-# stable-baselines3 IS installed here (Phase 6, unlike bsk-rl/hapsira):
-# it needs torch/gymnasium/pandas, not Basilisk, so tests/test_training.py's
-# fast synthetic-env tests can actually run in CI instead of skipping --
-# only tests that construct a real CollisionAvoidanceEnv (needing bsk_rl)
-# still skip here.
-#
-# NOTE: an earlier version of this file used `pip install -e . --no-deps`
-# with no explicit deps at all, which meant numpy/scipy were never
-# installed -- broke CI the moment Phase 1 added real tests (see PR #1's
-# CI run). Fixed by installing the actual lightweight deps explicitly.
-
 on:
   push:
-    branches: [main]
+    branches: [main, 'v2/**']
   pull_request:
+  workflow_dispatch:
+    inputs:
+      full_physics:
+        description: Install Basilisk and run the full physics suite
+        type: boolean
+        default: false
 
 jobs:
-  lint-and-test:
+  fast-python:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-      - name: Install package
-        # --no-deps on the package itself: skip pulling in bsk-rl/
-        # gymnasium/sgp4 here, but DO install the real lightweight deps
-        # pc/scenario/training actually import at test time -- including
-        # hapsira (targeting.py, Phase 3) and its astropy<7 pin (see
-        # pyproject.toml's comment on why), and stable-baselines3 (Phase 6,
-        # see the note above). Once env/ tests (Phase 4+) need the full
-        # bsk-rl/Basilisk stack, drop --no-deps and add a Basilisk install
-        # step above.
+          python-version: '3.11'
+          cache: pip
+      - name: Install math, training and service dependencies
         run: |
-          pip install ruff pytest numpy scipy pandas "astropy<7" hapsira stable-baselines3
+          pip install ruff pytest numpy scipy pandas 'astropy<7' hapsira stable-baselines3
+          pip install -r web/backend/requirements.txt
           pip install -e . --no-deps
-      - name: Lint
-        run: ruff check src tests
-      - name: Test
-        run: pytest
+      - run: ruff check src tests scripts web/backend
+      - run: python scripts/check_docs.py
+      - run: python -m pytest -q
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failure
+          path: web/frontend/test-results
+  basilisk:
+    if: github.event_name == 'workflow_dispatch' && inputs.full_physics
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install 'bsk[all]' && pip install -e '.[dev]' -r web/backend/requirements.txt
+      - run: python -m scripts.download_checkpoint
+      - run: python -m pytest -q
+      - name: Re-execute verified conjunction
+        run: python -m scripts.generate_replays --events 8767 --policies never_maneuver --output artifacts/local/ci
+      - name: Real service worker, cache, and cancellation contract
+        run: APSIS_TEST_LIVE=1 python -m pytest tests/test_web_backend_live.py -q

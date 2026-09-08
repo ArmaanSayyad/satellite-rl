@@ -3,7 +3,10 @@ import type { Frame } from "./types";
 // Real Newtonian point-mass gravity, g = mu * r / |r|^3 -- same formula
 // (and same mu constant, passed from the backend) used throughout this
 // project's own physics code (e.g. satellite_rl.scenario.targeting).
-export function gravityAccelMs2(r: [number, number, number], muM3S2: number): number {
+export function gravityAccelMs2(
+  r: [number, number, number],
+  muM3S2: number,
+): number {
   const rMag = Math.hypot(r[0], r[1], r[2]);
   return muM3S2 / (rMag * rMag);
 }
@@ -12,11 +15,17 @@ export function speedMs(v: [number, number, number]): number {
   return Math.hypot(v[0], v[1], v[2]);
 }
 
-export function separationM(a: [number, number, number], b: [number, number, number]): number {
+export function separationM(
+  a: [number, number, number],
+  b: [number, number, number],
+): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
-export function subtract(a: [number, number, number], b: [number, number, number]): [number, number, number] {
+export function subtract(
+  a: [number, number, number],
+  b: [number, number, number],
+): [number, number, number] {
   return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 }
 
@@ -31,7 +40,7 @@ export function interpolateFrame(a: Frame, b: Frame, t: number): Frame {
   const frac = span > 0 ? (t - a.t_s) / span : 0;
   const lerp3 = (
     p: [number, number, number],
-    q: [number, number, number]
+    q: [number, number, number],
   ): [number, number, number] => [
     p[0] + (q[0] - p[0]) * frac,
     p[1] + (q[1] - p[1]) * frac,
@@ -75,7 +84,7 @@ export function frameAtTime(frames: Frame[], t: number): Frame {
 export function splitFramesAtTime(
   frames: Frame[],
   missionTimeS: number,
-  previewWindowS: number
+  previewWindowS: number,
 ): { traveled: Frame[]; preview: Frame[] } {
   if (frames.length === 0) return { traveled: [], preview: [] };
 
@@ -85,7 +94,10 @@ export function splitFramesAtTime(
     traveled.push(frames[i]);
   }
   const current = frameAtTime(frames, missionTimeS);
-  if (traveled.length === 0 || traveled[traveled.length - 1].t_s < missionTimeS) {
+  if (
+    traveled.length === 0 ||
+    traveled[traveled.length - 1].t_s < missionTimeS
+  ) {
     traveled.push(current);
   }
 
