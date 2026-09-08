@@ -154,7 +154,7 @@ export default function OrbitalContextView({
           fallback={
             <mesh>
               <sphereGeometry args={[earthRadiusUnits, 48, 48]} />
-              <meshStandardMaterial color="#35483a" />
+              <meshStandardMaterial color="#31465e" />
             </mesh>
           }
         >
@@ -168,7 +168,7 @@ export default function OrbitalContextView({
               toUnits(f.ego_r[1]),
               toUnits(f.ego_r[2]),
             ])}
-            color="#9fbea9"
+            color="#90b5d3"
             lineWidth={1}
             transparent
             opacity={0.18}
@@ -177,7 +177,7 @@ export default function OrbitalContextView({
         {comparisonPath.length > 1 && (
           <Line
             points={comparisonPath}
-            color="#aaa7dc"
+            color="#b7a3f3"
             lineWidth={2}
             transparent
             opacity={0.7}
@@ -188,7 +188,7 @@ export default function OrbitalContextView({
         {egoTraveled.length > 1 && (
           <Line
             points={egoTraveled}
-            color="#a3d7bd"
+            color="#77d5f0"
             lineWidth={1.6}
             transparent
             opacity={0.85}

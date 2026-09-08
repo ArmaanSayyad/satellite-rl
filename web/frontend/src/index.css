@@ -1,15 +1,15 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
 :root {
   font-family: "DM Sans", Arial, sans-serif;
-  color: #e7e9df;
-  background: #0b1211;
+  color: #edf3fa;
+  background: #080e19;
   font-synthesis: none;
   color-scheme: dark;
-  --muted: #a0afa5;
-  --line: #293830;
-  --mint: #a3d7bd;
-  --amber: #e6b77e;
-  --coral: #e69a83;
+  --muted: #9cacc2;
+  --line: #26354a;
+  --mint: #77d5f0;
+  --amber: #f1bc72;
+  --coral: #f08b8f;
 }
 * {
   box-sizing: border-box;
@@ -45,8 +45,8 @@ button {
   padding: 9px 12px;
 }
 button:hover {
-  background: #1c2a23;
-  border-color: #91ae98;
+  background: #17263b;
+  border-color: #5f8fac;
 }
 button:disabled {
   cursor: wait;
@@ -57,7 +57,7 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 summary:focus-visible {
-  outline: 2px solid #c0eec9;
+  outline: 2px solid #9be7ff;
   outline-offset: 4px;
 }
 p {
@@ -83,7 +83,7 @@ svg {
   max-width: 100%;
 }
 ::selection {
-  background: #56785e;
+  background: #285c7b;
   color: #fff;
 }
 pre {

@@ -60,13 +60,13 @@ export function EncounterPlane({
             <path
               d="M 35 0 L 0 0 0 35"
               fill="none"
-              stroke="#243332"
+              stroke="#22334a"
               strokeWidth=".6"
             />
           </pattern>
         </defs>
         <rect x="25" y="15" width="350" height="315" fill="url(#plane-grid)" />
-        <path d="M200 15V330 M25 175H375" stroke="#61706a" strokeWidth=".6" />
+        <path d="M200 15V330 M25 175H375" stroke="#62758e" strokeWidth=".6" />
         <g
           transform={`translate(${200 + mx * scale} ${175 - my * scale}) rotate(${(-angle * 180) / Math.PI})`}
         >
@@ -75,8 +75,8 @@ export function EncounterPlane({
               key={n}
               rx={major * scale * n}
               ry={minor * scale * n}
-              fill={n === 1 ? "#8bc9b31a" : "none"}
-              stroke="#88bea6"
+              fill={n === 1 ? "#77d5f01a" : "none"}
+              stroke="#77d5f0"
               strokeOpacity={1 / n}
               strokeDasharray={n === 3 ? "3 4" : undefined}
             />
@@ -84,27 +84,27 @@ export function EncounterPlane({
         </g>
         <path
           d={`M200 175L${200 + mx * scale} ${175 - my * scale}`}
-          stroke="#e8b881"
+          stroke="#f1bc72"
           strokeWidth="1.4"
         />
         <circle
           cx="200"
           cy="175"
           r={radius * radiusFactor * scale}
-          fill="#e88c7133"
-          stroke="#ed927b"
+          fill="#f08b8f33"
+          stroke="#f08b8f"
         />
-        <path d="M195 175h10 M200 170v10" stroke="#f4ece0" />
+        <path d="M195 175h10 M200 170v10" stroke="#edf3fa" />
         <circle
           cx={200 + mx * scale}
           cy={175 - my * scale}
           r="3"
-          fill="#e8b881"
+          fill="#f1bc72"
         />
-        <text x="28" y="345" fill="#a3afa5" fontSize="10">
+        <text x="28" y="345" fill="#9cacc2" fontSize="10">
           ± {extent.toFixed(0)} m · equal axis scale
         </text>
-        <text x="275" y="345" fill="#a3afa5" fontSize="10">
+        <text x="275" y="345" fill="#9cacc2" fontSize="10">
           1σ / 2σ / 3σ
         </text>
       </svg>
@@ -170,7 +170,7 @@ export function RiskChart({
   const y = (pc: number) =>
     20 +
     (Math.min(12, Math.max(0, -Math.log10(Math.max(pc, 1e-12)))) / 12) * 145;
-  const colors = ["#a3d7bd", "#e6b77e", "#a9b6e6", "#dc8e7c", "#7bc3d5"];
+  const colors = ["#77d5f0", "#f1bc72", "#b7a3f3", "#f08b8f", "#76a4ff"];
   return (
     <section className="instrument chart">
       <div className="instrument-heading">
@@ -189,9 +189,9 @@ export function RiskChart({
               x2="635"
               y1={y(10 ** v)}
               y2={y(10 ** v)}
-              stroke="#263430"
+              stroke="#26354a"
             />
-            <text x="4" y={y(10 ** v) + 4} fill="#a5b0a9" fontSize="10">
+            <text x="4" y={y(10 ** v) + 4} fill="#9cacc2" fontSize="10">
               10^{v}
             </text>
           </g>
@@ -201,10 +201,10 @@ export function RiskChart({
           x2="635"
           y1={y(threshold)}
           y2={y(threshold)}
-          stroke="#df987a"
+          stroke="#f08b8f"
           strokeDasharray="4 5"
         />
-        <text x="510" y={y(threshold) - 7} fill="#df987a" fontSize="10">
+        <text x="510" y={y(threshold) - 7} fill="#f08b8f" fontSize="10">
           Decision threshold
         </text>
         {runs.map((run, i) => {
@@ -228,13 +228,13 @@ export function RiskChart({
           x2={50 + (time / duration) * 585}
           y1="15"
           y2="175"
-          stroke="#eee6d2"
+          stroke="#edf3fa"
           opacity=".6"
         />
-        <text x="50" y="195" fill="#a5b0a9" fontSize="10">
+        <text x="50" y="195" fill="#9cacc2" fontSize="10">
           First warning
         </text>
-        <text x="606" y="195" fill="#a5b0a9" fontSize="10">
+        <text x="606" y="195" fill="#9cacc2" fontSize="10">
           TCA
         </text>
       </svg>
@@ -278,12 +278,12 @@ export function UncertaintyChart({ run }: { run: SimulationResult }) {
         role="img"
         aria-label="Major and minor covariance standard deviations through the episode"
       >
-        <line x1="50" y1="95" x2="875" y2="95" stroke="#344639" />
+        <line x1="50" y1="95" x2="875" y2="95" stroke="#30465f" />
         {(["major", "minor"] as const).map((axis, i) => (
           <polyline
             key={axis}
             fill="none"
-            stroke={i ? "#e6b77e" : "#a3d7bd"}
+            stroke={i ? "#f1bc72" : "#77d5f0"}
             strokeWidth="1.5"
             points={points
               .map(
@@ -293,16 +293,16 @@ export function UncertaintyChart({ run }: { run: SimulationResult }) {
               .join(" ")}
           />
         ))}
-        <text x="0" y="28" fill="#a0afa5" fontSize="9">
+        <text x="0" y="28" fill="#9cacc2" fontSize="9">
           {max.toFixed(0)} m
         </text>
-        <text x="0" y="99" fill="#a0afa5" fontSize="9">
+        <text x="0" y="99" fill="#9cacc2" fontSize="9">
           0 m
         </text>
-        <text x="50" y="119" fill="#a0afa5" fontSize="9">
+        <text x="50" y="119" fill="#9cacc2" fontSize="9">
           First warning
         </text>
-        <text x="850" y="119" fill="#a0afa5" fontSize="9">
+        <text x="850" y="119" fill="#9cacc2" fontSize="9">
           TCA
         </text>
       </svg>
@@ -347,7 +347,7 @@ export function FuelChart({ runs }: { runs: SimulationResult[] }) {
             x2="405"
             y1={25 + n * 46}
             y2={25 + n * 46}
-            stroke="#263430"
+            stroke="#26354a"
           />
         ))}
         {runs.map((r, i) => {
@@ -363,12 +363,12 @@ export function FuelChart({ runs }: { runs: SimulationResult[] }) {
                 cx={x}
                 cy={y}
                 r="4"
-                fill={i === 0 ? "#a3d7bd" : "#e6b77e"}
+                fill={i === 0 ? "#77d5f0" : "#f1bc72"}
               />
               <text
                 x={Math.min(x + 8, 290)}
                 y={y - 8}
-                fill="#d6dfd5"
+                fill="#d3dfed"
                 fontSize="10"
               >
                 {policyName(r.policy_id ?? "v1")}
@@ -376,16 +376,16 @@ export function FuelChart({ runs }: { runs: SimulationResult[] }) {
             </g>
           );
         })}
-        <text x="45" y="195" fill="#a5b0a9" fontSize="10">
+        <text x="45" y="195" fill="#9cacc2" fontSize="10">
           0 m/s Δv
         </text>
-        <text x="330" y="195" fill="#a5b0a9" fontSize="10">
+        <text x="330" y="195" fill="#9cacc2" fontSize="10">
           {maxFuel.toFixed(2)} m/s
         </text>
-        <text x="0" y="30" fill="#a5b0a9" fontSize="10">
+        <text x="0" y="30" fill="#9cacc2" fontSize="10">
           10⁰
         </text>
-        <text x="0" y="166" fill="#a5b0a9" fontSize="10">
+        <text x="0" y="166" fill="#9cacc2" fontSize="10">
           10⁻¹²
         </text>
       </svg>

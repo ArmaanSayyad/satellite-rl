@@ -51,7 +51,7 @@
   padding: 0 4px;
 }
 .masthead nav button[aria-current="page"] {
-  color: #e8eadf;
+  color: #edf3fa;
 }
 .masthead nav button[aria-current="page"]:after {
   content: "";
@@ -105,7 +105,7 @@ h1 {
 h1 em {
   font-family: Georgia, serif;
   font-weight: 400;
-  color: #b2c0a7;
+  color: #a9c9e6;
 }
 .page-heading p {
   font-size: 13px;
@@ -135,7 +135,7 @@ h1 em {
   border-radius: 100%;
   background: var(--mint);
   margin-top: 3px;
-  box-shadow: 0 0 0 4px #a3d7bd10;
+  box-shadow: 0 0 0 4px #77d5f010;
 }
 .workspace {
   display: grid;
@@ -156,7 +156,7 @@ h1 em {
   align-items: center;
 }
 .section-label {
-  color: #b8c5b9;
+  color: #b7c6d9;
 }
 .micro {
   font-size: 8px;
@@ -182,18 +182,18 @@ h1 em {
   text-align: left;
   gap: 8px;
   padding: 16px 13px;
-  background: #101a16;
+  background: #0e1828;
   border-color: transparent;
   border-left: 2px solid transparent;
   min-height: 107px;
 }
 .event-card.selected {
-  background: #1b2a20;
-  border-color: #425a46;
-  border-left-color: #bad4ae;
+  background: #152b40;
+  border-color: #375d7c;
+  border-left-color: #77d5f0;
 }
 .event-number {
-  color: #99b29f;
+  color: #93adc9;
   font-size: 8px;
 }
 .event-card strong {
@@ -210,7 +210,7 @@ h1 em {
   right: 10px;
   top: 13px;
   font-size: 15px;
-  color: #b2c7ad;
+  color: #b0c8df;
 }
 .rail-note {
   display: flex;
@@ -246,8 +246,8 @@ h1 em {
   color: var(--muted);
 }
 .policy-switch button[aria-pressed="true"] {
-  background: #28372c;
-  color: #dcebd7;
+  background: #213c53;
+  color: #dcefff;
 }
 .text-button {
   font-size: 10px;
@@ -257,7 +257,7 @@ h1 em {
 }
 .instrument {
   border: 1px solid var(--line);
-  background: #101a16;
+  background: #0e1828;
   padding: 21px;
 }
 .visual-grid {
@@ -270,7 +270,7 @@ h1 em {
   border: 1px solid var(--line);
   position: relative;
   overflow: hidden;
-  background: #080f0e;
+  background: #050a12;
 }
 .orbital-overlay {
   position: absolute;
@@ -285,12 +285,12 @@ h1 em {
   margin: 12px 0;
 }
 .record-label {
-  color: #bdcba9;
-  border: 1px solid #516148;
+  color: #b6d9ef;
+  border: 1px solid #40617e;
   padding: 4px 7px;
   font-size: 8px;
   display: inline-block;
-  background: #101a1688;
+  background: #0e182888;
 }
 .panel {
   width: 100%;
@@ -316,8 +316,8 @@ h1 em {
 .panel-btn {
   font-size: 8px;
   padding: 5px 7px;
-  color: #a9b7a9;
-  background: #0b1211aa;
+  color: #a9b9cd;
+  background: #080e19aa;
 }
 .panel canvas {
   flex: 1;
@@ -331,10 +331,10 @@ h1 em {
   flex-wrap: wrap;
   gap: 12px;
   padding: 16px 20px;
-  background: #0b1211cc;
-  border-top: 1px solid #26352bcc;
+  background: #080e19cc;
+  border-top: 1px solid #26354acc;
   font-size: 9px;
-  color: #c3ccbd;
+  color: #c3d0e2;
   pointer-events: none;
 }
 .orbital-footer small {
@@ -379,7 +379,7 @@ h1 em {
 }
 .sensitivity {
   font-size: 9px;
-  color: #b3c0b0;
+  color: #b3c3d8;
   display: flex;
   flex-wrap: wrap;
   gap: 9px;
@@ -414,7 +414,7 @@ h1 em {
 }
 .transport-main .play-button {
   background: var(--mint);
-  color: #0e2119;
+  color: #071924;
   border-color: var(--mint);
   min-width: 85px;
   font-weight: 600;
@@ -439,7 +439,7 @@ h1 em {
 }
 .speed-label select {
   font-size: 10px;
-  background: #19281e;
+  background: #15283d;
   border: 1px solid var(--line);
   padding: 4px;
 }
@@ -538,14 +538,14 @@ h1 em {
   padding: 10px 13px;
 }
 .decision-buttons button[aria-pressed="true"] {
-  background: #253c2c;
-  border-color: #74977b;
+  background: #1c3b53;
+  border-color: #508cac;
 }
 .decision-buttons small {
   display: block;
   margin-top: 7px;
   font-size: 7px;
-  color: #b4c5aa;
+  color: #b4cee4;
 }
 .decision-detail {
   display: grid;
@@ -599,16 +599,16 @@ h1 em {
   font-size: 8px;
 }
 .primary {
-  background: #b6cda0;
-  color: #122415;
+  background: #77d5f0;
+  color: #071924;
   font-size: 11px;
   font-weight: 600;
-  border-color: #b6cda0;
+  border-color: #77d5f0;
   padding: 11px 15px;
 }
 .primary:hover {
-  background: #d3e4c1;
-  color: #122415;
+  background: #a8e8fa;
+  color: #071924;
 }
 .evidence-grid {
   display: grid;
@@ -685,7 +685,7 @@ h1 em {
 }
 .lesson-steps button[aria-current="step"] {
   background: var(--mint);
-  color: #0d2318;
+  color: #071924;
 }
 .loading,
 .empty-state {
@@ -708,7 +708,7 @@ h1 em {
 .loading-orbit {
   height: 48px;
   width: 80px;
-  border: 1px solid #5d846b;
+  border: 1px solid #497e9f;
   border-radius: 50%;
   transform: rotate(-25deg);
   margin-bottom: 28px;
@@ -716,8 +716,8 @@ h1 em {
 .error-banner,
 .notice {
   padding: 14px 18px;
-  border: 1px solid #91614f;
-  background: #30221d;
+  border: 1px solid #925763;
+  background: #301c29;
   margin-bottom: 20px;
   display: flex;
   justify-content: space-between;
@@ -727,8 +727,8 @@ h1 em {
   line-height: 1.5;
 }
 .notice {
-  background: #1d3022;
-  border-color: #516e52;
+  background: #122d43;
+  border-color: #3b698b;
 }
 .error-banner button,
 .notice button {
@@ -758,8 +758,8 @@ footer a {
   left: 20px;
   top: -80px;
   z-index: 100;
-  background: #d6e8c6;
-  color: #122415;
+  background: #a8e8fa;
+  color: #071924;
   padding: 12px;
 }
 .skip-link:focus {
@@ -853,7 +853,7 @@ footer a {
 }
 .run-context {
   margin: 0 0 14px;
-  color: #b8c5b9;
+  color: #b7c6d9;
 }
 .geometry-toolbar > div {
   display: flex;
@@ -864,7 +864,7 @@ footer a {
   padding: 6px 9px;
 }
 .geometry-toolbar button[aria-pressed="true"] {
-  border-color: #70967a;
+  border-color: #508cac;
   color: var(--mint);
 }
 .uncertainty-chart,
@@ -916,11 +916,11 @@ footer a {
 }
 .live-settings select,
 .live-settings input {
-  background: #15241c;
+  background: #112237;
   border: 1px solid var(--line);
   padding: 6px;
   font-size: 10px;
-  color: #d3ddcd;
+  color: #d3dfed;
   max-width: 165px;
 }
 .live-settings input {

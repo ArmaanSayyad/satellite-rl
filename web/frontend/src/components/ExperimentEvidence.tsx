@@ -100,7 +100,7 @@ export default function ExperimentEvidence() {
               >
                 <polyline
                   fill="none"
-                  stroke="#a3d7bd"
+                  stroke="#77d5f0"
                   strokeWidth="1.5"
                   points={run.learning_curve
                     .map((p, i) => {
@@ -111,7 +111,7 @@ export default function ExperimentEvidence() {
                     })
                     .join(" ")}
                 />
-                <text x="20" y="117" fill="#a0afa5" fontSize="9">
+                <text x="20" y="117" fill="#9cacc2" fontSize="9">
                   Step {run.learning_curve[0].step} →{" "}
                   {run.learning_curve.at(-1)?.step} · reward range{" "}
                   {Math.min(...run.learning_curve.map((p) => p.reward)).toFixed(
