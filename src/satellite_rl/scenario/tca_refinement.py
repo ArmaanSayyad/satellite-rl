@@ -45,6 +45,7 @@ import numpy as np
 from Basilisk.simulation import spacecraft
 from Basilisk.utilities import SimulationBaseClass, macros, simIncludeGravBody
 from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
+from scipy.interpolate import CubicHermiteSpline
 
 from .targeting import TargetedScenario, propagate_state
 
@@ -58,6 +59,7 @@ def _fly_passive_pair(
     v2_0: np.ndarray,
     duration_s: float,
     sim_rate_s: float,
+    utc_init: str = UTC_INIT,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Propagate two passive spacecraft under full Basilisk dynamics
     (10th-degree spherical harmonics + SPICE Earth orientation + solar
@@ -120,7 +122,7 @@ def _fly_passive_pair(
     path_ephem_data = str(get_path(DataFile.EphemerisData.de430).parent)
     planet.useSphericalHarmonicsGravityModel(path_grav_data, 10)
 
-    grav_factory.createSpiceInterface(path_ephem_data, UTC_INIT, epochInMsg=True)
+    grav_factory.createSpiceInterface(path_ephem_data, utc_init, epochInMsg=True)
     grav_factory.spiceObject.zeroBase = "earth"
     scSim.AddModelToTask(sim_task_name, grav_factory.spiceObject, ModelPriority=100)
 
@@ -138,7 +140,9 @@ def _fly_passive_pair(
     scSim.AddModelToTask(sim_task_name, rec2)
 
     scSim.InitializeSimulation()
-    scSim.ConfigureStopTime(macros.sec2nano(duration_s))
+    # Record through the next integration knot, then evaluate the exact
+    # requested epoch. Irregular CDM timestamps need not lie on the grid.
+    scSim.ConfigureStopTime(macros.sec2nano(np.ceil(duration_s / sim_rate_s) * sim_rate_s))
     scSim.ExecuteSimulation()
 
     times_s = np.array(rec1.times()) * macros.NANO2SEC
@@ -147,6 +151,15 @@ def _fly_passive_pair(
     r2 = np.array(rec2.r_BN_N)
     v2 = np.array(rec2.v_BN_N)
     grav_factory.unloadSpiceKernels()
+    if len(times_s) > 1 and not np.isclose(times_s[-1], duration_s, rtol=0, atol=1e-8):
+        spl1 = CubicHermiteSpline(times_s, r1, v1)
+        spl2 = CubicHermiteSpline(times_s, r2, v2)
+        keep = times_s < duration_s
+        r1 = np.vstack([r1[keep], spl1(duration_s)])
+        v1 = np.vstack([v1[keep], spl1(duration_s, 1)])
+        r2 = np.vstack([r2[keep], spl2(duration_s)])
+        v2 = np.vstack([v2[keep], spl2(duration_s, 1)])
+        times_s = np.append(times_s[keep], duration_s)
     return times_s, r1, v1, r2, v2
 
 

@@ -7,7 +7,7 @@ __pycache__/
 venv/
 .DS_Store
 
-# runtime-fetched / regenerated, never committed (see docs/05-datasets.md)
+# runtime-fetched / regenerated, never committed (see docs/DATA_CARD.md)
 data/celestrak_cache/
 data/scratch/
 
@@ -15,15 +15,23 @@ data/scratch/
 # alone is 232 MB, over GitHub's 100 MB hard per-file push limit, so it
 # can't be committed directly despite the license allowing it. Fetch via
 # scripts/download_kelvins.py instead; SOURCE.md (provenance/checksum) is
-# the one file from this directory that IS tracked -- see docs/05-datasets.md
-# and docs/12-architecture.md.
+# the one file from this directory that IS tracked -- see docs/DATA_CARD.md.
 data/kelvins_cdm/*
 !data/kelvins_cdm/SOURCE.md
 
 # training artifacts (Phase 6+)
 *.zip
+!assets/models/v2-imitation-hf/model.zip
 runs/
 checkpoints/
 
 # agent tooling infrastructure (subagent git worktrees), not project content
 .claude/
+
+# Local simulation cache and build/browser verification artifacts
+.cache/
+web/frontend/dist/
+web/frontend/node_modules/
+web/frontend/test-results/
+web/frontend/playwright-report/
+artifacts/local/

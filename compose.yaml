@@ -1,0 +1,8 @@
+services:
+  apsis:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      APSIS_LIVE: "0"
+    restart: unless-stopped

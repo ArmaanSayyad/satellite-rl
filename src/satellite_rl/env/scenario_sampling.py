@@ -22,6 +22,13 @@ way sigma/combined_radius conceptually could.
 """
 
 
+import copy
+import hashlib
+import json
+from collections import OrderedDict
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -58,6 +65,8 @@ def _clean_schedule(raw_days: list) -> list:
         if filtered[-1] - t >= MIN_DECISION_INTERVAL_S:
             filtered.append(t)
     if filtered[-1] != 0.0:
+        if filtered[-1] < MIN_DECISION_INTERVAL_S:
+            filtered.pop()
         filtered.append(0.0)
     return filtered
 
@@ -109,6 +118,10 @@ class SecondaryScenarioSampler:
         high_risk_pool_fraction: float = 0.05,
         high_risk_augment: bool = True,
         high_risk_precise_targeting: bool = True,
+        event_ids: list | None = None,
+        keyed_schedules: dict | None = None,
+        max_lead_days: float | None = None,
+        schedule_resolution_s: float = 1.0,
     ) -> None:
         """
         Args:
@@ -181,7 +194,15 @@ class SecondaryScenarioSampler:
             raise ValueError("nominal_tca_s is required when schedule_library is not provided")
         if not 0.0 <= high_risk_fraction <= 1.0:
             raise ValueError("high_risk_fraction must be in [0, 1]")
+        if event_ids is not None:
+            geometry_df = geometry_df[geometry_df.event_id.isin(event_ids)].copy()
+        if geometry_df.empty:
+            raise ValueError("No source events remain after filtering")
         self.geometry_df = geometry_df
+        self.keyed_schedules = keyed_schedules
+        self.max_lead_days = max_lead_days
+        self.schedule_resolution_s = schedule_resolution_s
+        self.requested_event_id = None
         self.ego_r0 = ego_r0
         self.ego_v0 = ego_v0
         self.nominal_tca_s = nominal_tca_s
@@ -204,6 +225,54 @@ class SecondaryScenarioSampler:
         self._cached_sample: dict | None = None
         self._cached_schedule_s: list | None = None
         self._cached_evolution: dict | None = None
+        self._original_span_s: float | None = None
+        self._target_cache = OrderedDict()
+        self.target_cache_hits = 0
+        self.target_cache_misses = 0
+        dependencies = {}
+        for name in ("bsk-rl", "basilisk", "hapsira", "numpy", "astropy"):
+            try:
+                dependencies[name] = version(name)
+            except PackageNotFoundError:
+                dependencies[name] = "unregistered"
+        source_paths = [Path(__file__), Path(__file__).parents[1] / "scenario" / "targeting.py",
+                        Path(__file__).parents[1] / "scenario" / "tca_refinement.py"]
+        self._target_signature = {
+            "dependencies": dependencies,
+            "source_hashes": [hashlib.sha256(p.read_bytes()).hexdigest() for p in source_paths],
+            "epoch": "2018 SEP 29 21:00:00.000 (UTC)",
+            "precision_sim_rate_s": 2.0,
+            "precision_tol_m": 1.0,
+        }
+
+    def _target_cached(self, tca, miss, speed, angle, precise):
+        """Bounded process-local cache; restore the exact post-solve RNG state.
+
+        Snapshots never escape: copy on storage and retrieval prevents consumers
+        mutating a cached initial state. Failed solves are not cached.
+        """
+        key = json.dumps({
+            **self._target_signature, "ego_r": self.ego_r0.tolist(), "ego_v": self.ego_v0.tolist(),
+            "tca": tca, "miss": miss, "speed": speed, "angle": angle,
+            "precise": precise, "rng": self.rng.bit_generator.state,
+        }, sort_keys=True)
+        if key in self._target_cache:
+            scenario, diagnostics, rng_after = copy.deepcopy(self._target_cache[key])
+            self.rng.bit_generator.state = rng_after
+            self._target_cache.move_to_end(key)
+            self.target_cache_hits += 1
+            return scenario, diagnostics
+        self.target_cache_misses += 1
+        scenario = solve_secondary_initial_state_robust(
+            self.ego_r0, self.ego_v0, tca, miss, speed, angle, self.rng)
+        diagnostics = None
+        if precise:
+            scenario, diagnostics = correct_targeting_geometry(
+                self.ego_r0, self.ego_v0, scenario, tca)
+        self._target_cache[key] = copy.deepcopy((scenario, diagnostics, self.rng.bit_generator.state))
+        if len(self._target_cache) > 32:
+            self._target_cache.popitem(last=False)
+        return scenario, diagnostics
 
     def __deepcopy__(self, memo: dict) -> "SecondaryScenarioSampler":
         """Deepcopy-proof: always return the SAME instance, never a copy.
@@ -240,6 +309,10 @@ class SecondaryScenarioSampler:
         # separately-sampled schedule/evolution pair.
         drawing_high_risk = self.high_risk_df is not None and self.rng.random() < self.high_risk_fraction
         pool = self.high_risk_df if drawing_high_risk else self.geometry_df
+        if self.requested_event_id is not None:
+            pool = self.geometry_df[self.geometry_df.event_id == self.requested_event_id]
+            if pool.empty:
+                raise ValueError("Requested event_id is outside the configured source partition")
 
         # A handful of real events have relative_speed high enough
         # (found in Phase 7e, TECHNICAL.md §6: 15,850 m/s, nearly 2x
@@ -259,6 +332,23 @@ class SecondaryScenarioSampler:
         # this affects out of 8,672 events at the time this was found).
         for _resample_attempt in range(5):
             row = pool.iloc[self.rng.integers(0, len(pool))]
+            if self.keyed_schedules is not None:
+                event_key = str(int(row["event_id"]))
+                if event_key not in self.keyed_schedules:
+                    raise ValueError(f"No keyed CDM schedule for event {event_key}")
+                raw = self.keyed_schedules[event_key]
+                self._original_span_s = _clean_schedule(raw)[0]
+                if self.max_lead_days is not None:
+                    raw = [t for t in raw if t <= self.max_lead_days]
+                    if not any(t > 0 for t in raw):
+                        raw = [self.max_lead_days, 0.0]
+                # Basilisk checks drift completion at integration knots.
+                # Quantize explicitly before targeting, preventing accumulated
+                # CDM-step overshoot from moving the final scoring epoch.
+                raw = [round(t * 86400 / self.schedule_resolution_s)
+                       * self.schedule_resolution_s / 86400 for t in raw]
+                schedule_s = _clean_schedule(raw)
+                nominal_tca_s = schedule_s[0]
             miss_distance = float(row["miss_distance"])
             alignment_angle_rad = float(row["alignment_angle_rad"])
             sigma_x = float(row["sigma_x"])
@@ -297,17 +387,20 @@ class SecondaryScenarioSampler:
                 augmented = True
 
             try:
-                pre_solve_scenario = solve_secondary_initial_state_robust(
-                    self.ego_r0,
-                    self.ego_v0,
+                forced_risky_source = self.requested_event_id is not None and max(
+                    float(row.get("native_pc", 0)), float(row.get("esa_reported_pc", 0))
+                ) >= 1e-4
+                pre_solve_scenario, precision_diagnostics = self._target_cached(
                     nominal_tca_s,
                     miss_distance,
                     relative_speed,
                     alignment_angle_rad,
-                    self.rng,
+                    bool((drawing_high_risk or forced_risky_source) and self.high_risk_precise_targeting),
                 )
                 break
             except RuntimeError:
+                if self.requested_event_id is not None:
+                    raise
                 continue
         else:
             raise RuntimeError(
@@ -317,6 +410,13 @@ class SecondaryScenarioSampler:
             )
 
         sample = {
+            "event_id": int(row["event_id"]) if "event_id" in row else None,
+            "schedule_kind": (
+                "bounded_source_window" if self.max_lead_days is not None
+                else "source_event" if self.keyed_schedules is not None else "legacy_bootstrap"
+            ),
+            "max_lead_days": self.max_lead_days,
+            "schedule_resolution_s": self.schedule_resolution_s if self.keyed_schedules else None,
             "miss_distance": miss_distance,
             "relative_speed": relative_speed,
             "sigma_x": sigma_x,
@@ -346,7 +446,7 @@ class SecondaryScenarioSampler:
         # draws for no reason).
         scenario = pre_solve_scenario
 
-        if drawing_high_risk and self.high_risk_precise_targeting:
+        if precision_diagnostics is not None:
             # TECHNICAL.md §6, "Five bugs standing between...": the
             # J2-only solver above is only accurate to ~100-200m at
             # these lead times, regardless
@@ -358,13 +458,17 @@ class SecondaryScenarioSampler:
             # just the J2 solver's approximation of it. Gated to pool
             # draws specifically -- this cost is real and not worth
             # paying on every episode, only where precision matters.
-            scenario, diagnostics = correct_targeting_geometry(
-                self.ego_r0, self.ego_v0, scenario, nominal_tca_s
-            )
-            sample["precise_targeting_error_m"] = diagnostics["final_error_m"]
+            sample["precise_targeting_error_m"] = precision_diagnostics["final_error_m"]
 
         if self.evolution_df is not None:
-            evo_row = self.evolution_df.iloc[self.rng.integers(0, len(self.evolution_df))]
+            if self.keyed_schedules is not None:
+                matching = self.evolution_df[self.evolution_df.event_id == row["event_id"]]
+                evo_row = matching.iloc[0] if len(matching) else {
+                    "sigma_x_first": sigma_x, "sigma_z_first": sigma_z,
+                    "sigma_x_last": sigma_x, "sigma_z_last": sigma_z,
+                }
+            else:
+                evo_row = self.evolution_df.iloc[self.rng.integers(0, len(self.evolution_df))]
             evolution = {
                 "sigma_x_first": float(evo_row["sigma_x_first"]),
                 "sigma_z_first": float(evo_row["sigma_z_first"]),
@@ -433,6 +537,12 @@ class SecondaryScenarioSampler:
         if self._cached_evolution is None:
             return self.current_sigma_xz
         fraction = float(np.clip(fraction, 0.0, 1.0))
+        if self.max_lead_days is not None and self._original_span_s:
+            # A truncated lead window starts partway through the original
+            # covariance interpolation; do not accelerate uncertainty shrinkage.
+            fraction = 1.0 - (1.0 - fraction) * min(
+                self._cached_schedule_s[0] / self._original_span_s, 1.0
+            )
 
         def _interp(first: float, last: float) -> float:
             log_val = np.log(first) + fraction * (np.log(last) - np.log(first))

@@ -1,95 +1,28 @@
-# Web demo
+# Apsis application
 
-An interactive demo of the trained collision-avoidance policy: click
-**Begin Simulation**, watch it fly one of the 7 real, historically
-dangerous ESA close-approach events (the ones validated in
-[TECHNICAL.md §7](../TECHNICAL.md#7-results)), and see whether it
-burns fuel to dodge.
+From the repository root, `npm run dev` installs the frontend lockfile and opens a
+Vite development server. Node 24.15+ is required; Node 24.20 is tested. Verified Basilisk
+examples are committed under `web/frontend/public/replays/` and require no backend.
 
-Two pieces:
+For a built application and API, use `docker compose up --build`, then visit
+http://localhost:8000. For live physics, see [deployment](../docs/DEPLOYMENT.md).
+The old blocking `/api/simulate?seed=` API has been replaced by `/api/v2/jobs`.
 
-- `backend/` — FastAPI service that lists the 7 known real events
-  (`GET /api/scenarios`) and runs one real episode on a chosen or
-  random one (`POST /api/simulate?seed=...`), same physics/policy as
-  the rest of the repo — no mocking. Each run also re-simulates the
-  identical scenario with a never-maneuver baseline, for comparison.
-- `frontend/` — React + Three.js UI: two 3D panels (full orbital
-  context, and a close-up of the actual encounter geometry, since the
-  two are 4-5 orders of magnitude apart in scale, each with real Earth
-  imagery, progressive trajectory reveal, and a live separation line),
-  a scenario picker, playback controls (play/pause/speed/seek/step),
-  a live stats dashboard with an inline glossary, a decision timeline
-  with per-decision explanations, and a trained-policy-vs-no-maneuver
-  comparison.
-
-## Prerequisite: a trained model checkpoint
-
-The backend loads `runs/ppo_stage2_riskaware_run1.zip`. `runs/` is
-gitignored (training artifacts aren't committed — see the repo's
-`.gitignore`), so a fresh clone won't have it. Either download the
-pretrained checkpoint from this repo's
-[Releases](https://github.com/ArmaanSayyad/satellite-rl/releases) page
-and unzip it into `runs/`, or produce it yourself with the exact
-settings from the training run described in
-[TECHNICAL.md §5](../TECHNICAL.md#5-training-setup):
-
-```bash
-python -c "
-from satellite_rl.training.train_ppo import train
-train(
-    total_timesteps=8000,
-    out_name='ppo_stage2_riskaware_run1',
-    targeting_seed=0,
-    high_risk_fraction=0.5,
-    high_risk_pool_fraction=0.01,
-    high_risk_augment=True,
-    high_risk_precise_targeting=True,
-)
-"
-```
-
-This takes roughly 90 minutes. If you use a different `out_name` or
-train a different checkpoint entirely, update `MODEL_PATH` in
-`backend/simulation_runner.py` to match.
-
-## Running it
-
-**Backend** (from the repo root, with the project's normal `.venv`
-active — it needs `satellite_rl` importable, plus `fastapi`/`uvicorn`):
-
-```bash
-pip install -r web/backend/requirements.txt
-cd web/backend
-uvicorn main:app --reload --port 8000
-```
-
-First request after startup takes ~30s (loading the policy and
-probing which random seeds reproduce each of the 7 real events).
-Once you see `Ready -- 7 real scenarios available: [...]` it's warm.
-
-**Frontend** (separate terminal):
-
-```bash
+```sh
 cd web/frontend
-npm install
-npm run dev
+npm run lint
+npm run test
+npm run build
+npx playwright install chromium
+npm run test:e2e
 ```
 
-Then open **http://localhost:5173**. The frontend expects the backend
-at `http://127.0.0.1:8000` (see `frontend/src/api.ts`); CORS is
-pre-configured for Vite's default dev port.
+The interface distinguishes recorded historical geometry, generated orbital scenarios,
+noisy policy observations, simulator outcomes and cached replays. Orbit samples are
+actual spacecraft message recordings; smooth browser playback interpolates between
+them. The Earth globe is contextual artwork, not an Earth-fixed coordinate measurement.
 
-Node 20.19+ or 22.12+ is recommended (Vite 8 warns below that); it
-runs fine on 20.13 in practice.
-
-## What each simulation shows
-
-Every click of **Begin Simulation** picks one of the 7 real events at
-random, runs the full episode through the actual trained PPO policy
-and Basilisk-based scenario pipeline (nothing scripted or faked), then
-the backend re-samples dense (~60s-resolution) trajectory segments
-between each decision point using the same physics probe used
-elsewhere in this project (`tca_refinement._fly_passive_pair`) so the
-frontend has something smooth to animate — the decisions and outcome
-themselves are exactly what the policy produced, not adjusted for
-presentation.
+Earth texture assets were inherited from the original demo and depict NASA Blue Marble
+imagery. NASA attribution and imagery usage: [Visible Earth](https://visibleearth.nasa.gov/)
+and [NASA imagery guidelines](https://www.nasa.gov/nasa-brand-center/images-and-media/).
+These imagery assets are separate from the ESA CC-BY-4.0 conjunction data and MIT code.

@@ -1,0 +1,12 @@
+{
+  "name": "apsis-laboratory",
+  "version": "2.0.0",
+  "private": true,
+  "engines": { "node": ">=24.15.0" },
+  "scripts": {
+    "dev": "npm --prefix web/frontend ci && npm --prefix web/frontend run dev",
+    "build": "npm --prefix web/frontend ci && npm --prefix web/frontend run build",
+    "test": "npm --prefix web/frontend run test",
+    "test:e2e": "npm --prefix web/frontend run test:e2e"
+  }
+}

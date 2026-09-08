@@ -83,6 +83,9 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
         high_risk_pool_fraction: float = 0.05,
         high_risk_augment: bool = True,
         high_risk_precise_targeting: bool = True,
+        event_ids: list | None = None,
+        keyed_schedules: dict | None = None,
+        max_lead_days: float | None = None,
         **kwargs,
     ) -> None:
         """
@@ -206,6 +209,9 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
                     high_risk_pool_fraction=high_risk_pool_fraction,
                     high_risk_augment=high_risk_augment,
                     high_risk_precise_targeting=high_risk_precise_targeting,
+                    event_ids=event_ids, keyed_schedules=keyed_schedules,
+                    max_lead_days=max_lead_days,
+                    schedule_resolution_s=kwargs.get("sim_rate", 1.0),
                 )
             else:
                 self._sampler = SecondaryScenarioSampler(
@@ -218,6 +224,7 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
                     high_risk_pool_fraction=high_risk_pool_fraction,
                     high_risk_augment=high_risk_augment,
                     high_risk_precise_targeting=high_risk_precise_targeting,
+                    event_ids=event_ids,
                 )
             self._fixed_sigma_m = None
             self._fixed_combined_radius_m = None
@@ -305,6 +312,7 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
         self.cumulative_fuel_used_ms = 0.0
         self.maneuver_count = 0
         if self._sampler is not None:
+            self._sampler.requested_event_id = (options or {}).get("event_id")
             if seed is not None:
                 # Explicit seed -> honor the standard Gym contract
                 # (reset(seed=X) must be reproducible): reseed the
@@ -349,6 +357,9 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
         # rebuilt).
         self.satellites[0]._time_to_tca_s = self.schedule_s[0]
         tuple_obs, info = super().reset(seed=seed, options=options)
+        if self._sampler is not None:
+            info["event_id"] = self._sampler.current_sample["event_id"]
+            info["scenario"] = self._sampler.current_sample
         return tuple_obs[0], info
 
     def step(self, action: np.ndarray):
@@ -394,5 +405,15 @@ class CollisionAvoidanceEnv(GeneralSatelliteTasking):
         info["cumulative_fuel_used_ms"] = self.cumulative_fuel_used_ms
         info["maneuver_count"] = self.maneuver_count
         info["schedule_length"] = len(self.schedule_s)
+        if self._sampler is not None:
+            info["event_id"] = self._sampler.current_sample["event_id"]
+        if terminated or truncated:
+            info["status"] = "completed" if is_final_step and "pc_final" in info else "failed"
+            info["pc_final_valid"] = "pc_final" in info
+            if "pc_final" not in info:
+                # Conservative failure sentinel for legacy aggregators; this
+                # is explicitly NOT a measured collision probability.
+                info["pc_final"] = 1.0
+                info["failure_reason"] = "Simulator terminated before scored TCA"
 
         return tuple_obs[0], reward, terminated, truncated, info

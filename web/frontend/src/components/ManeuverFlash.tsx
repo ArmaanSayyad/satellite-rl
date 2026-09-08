@@ -15,12 +15,18 @@ const FLASH_DURATION_S = 0.6;
  * `trigger` changes -- visual feedback for the instant a maneuver fires,
  * decoupled from mission-time (always plays at the same real wall-clock
  * pace regardless of playback speed). */
-export default function ManeuverFlash({ trigger, position, baseRadius = 0.4, color = "#ffde59" }: Props) {
+export default function ManeuverFlash({
+  trigger,
+  position,
+  baseRadius = 0.4,
+  color = "#ffde59",
+}: Props) {
   const meshRef = useRef<THREE.Mesh>(null);
   const startRef = useRef<number | null>(null);
   const isFirstRender = useRef(true);
 
   useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     if (isFirstRender.current) {
       isFirstRender.current = false;
       return;
@@ -52,7 +58,12 @@ export default function ManeuverFlash({ trigger, position, baseRadius = 0.4, col
   return (
     <mesh ref={meshRef} visible={false}>
       <sphereGeometry args={[1, 16, 16]} />
-      <meshBasicMaterial color={color} transparent opacity={0} depthWrite={false} />
+      <meshBasicMaterial
+        color={color}
+        transparent
+        opacity={0}
+        depthWrite={false}
+      />
     </mesh>
   );
 }
