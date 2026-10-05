@@ -32,6 +32,23 @@ Try it interactively: **[web demo](web/README.md)** — run the trained
 policy against a real event in your browser with a live 3D
 visualization.
 
+## Demo screenshots
+
+The local web demo runs the released PPO checkpoint through the real
+Basilisk simulation. Select a historical conjunction, step through the
+policy's decisions, and compare the result with a never-maneuver baseline.
+
+![Interactive collision-avoidance dashboard with scenario selection, mission statistics, policy comparison, and two 3D views](docs/screenshots/demo-overview.png)
+
+*The 38 m historical encounter during playback: mission statistics,
+fuel use, and the trained policy's outcome alongside the no-maneuver baseline.*
+
+![Earth-centered orbital context and satellite-relative encounter geometry](docs/screenshots/demo-orbital-views.png)
+
+*Two views of the same simulated encounter: Earth-centered orbital context
+(left) and satellite-relative encounter geometry (right). The separate
+scales make both the orbit and close approach visible.*
+
 ## Quickstart
 
 1. **Install Basilisk first** — it is not a normal pip dependency.
