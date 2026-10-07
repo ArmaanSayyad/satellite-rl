@@ -1,5 +1,7 @@
 # satellite-rl
 
+HI armaan 👋
+
 [![CI](https://github.com/ArmaanSayyad/satellite-rl/actions/workflows/ci.yml/badge.svg)](https://github.com/ArmaanSayyad/satellite-rl/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
